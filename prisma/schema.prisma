@@ -1,0 +1,80 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Client {
+  id                String       @id @default(uuid())
+  name              String
+  cpf               String       @unique
+  birthDate         DateTime
+  email             String       @unique
+  username          String       @unique
+  password          String
+  hasCertificate    Boolean      @default(false)
+  isCertificateValid Boolean     @default(false)
+  isActive          Boolean      @default(true)
+  documentPhotoUrl  String?
+  facialPhotoUrl    String?
+  certificates      Certificate[]
+  documents         Document[]
+  signatures        Signature[]
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+}
+
+model Certificate {
+  id              String     @id @default(uuid())
+  subject         String
+  serialNumber    String
+  publicKey       String
+  privateKey      String
+  issuedAt        DateTime
+  validUntil      DateTime
+  isValid         Boolean    @default(true)
+  issuer          String
+  certificatePem  String
+  client          Client?    @relation(fields: [clientId], references: [id])
+  clientId        String?
+  isCA            Boolean    @default(false)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+}
+
+model Document {
+  id              String      @id @default(uuid())
+  originalName    String
+  size            Int
+  documentType    String
+  extension       String
+  hash            String
+  storagePath     String
+  downloadUrl     String
+  viewUrl         String
+  isSigned        Boolean     @default(false)
+  client          Client      @relation(fields: [clientId], references: [id])
+  clientId        String
+  signatures      Signature[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+model Signature {
+  id              String     @id @default(uuid())
+  signer          Client     @relation(fields: [signerId], references: [id])
+  signerId        String
+  signerCpf       String
+  signedAt        DateTime   @default(now())
+  type            String     @default("Avançada")
+  certificateId   String?
+  document        Document   @relation(fields: [documentId], references: [id])
+  documentId      String
+  signatureData   String?
+}
