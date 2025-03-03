@@ -1,5 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, IsEmail, IsDateString, IsBoolean } from 'class-validator';
+import { Transform } from 'class-transformer';
+import {
+  IsOptional,
+  IsString,
+  IsEmail,
+  IsDateString,
+  IsBoolean,
+} from 'class-validator';
 
 export class UpdateClientDto {
   @ApiProperty({ required: false, example: 'João Silva' })
@@ -10,6 +17,7 @@ export class UpdateClientDto {
   @ApiProperty({ required: false, example: '1990-01-01' })
   @IsOptional()
   @IsDateString()
+  @Transform(({ value }) => new Date(value))
   birthDate?: string;
 
   @ApiProperty({ required: false, example: 'joao@exemplo.com' })

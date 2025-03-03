@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { ClientsService } from '../../clients/services/clients.service';
-import { Client } from '../../clients/entities/client.entity';
+import { plainToClass } from 'class-transformer';
+import { ClientEntity } from 'src/clients/entities/client.entity';
 
 @Injectable()
 export class AuthService {
@@ -14,9 +15,8 @@ export class AuthService {
   async validateUser(username: string, pass: string): Promise<any> {
     try {
       const user = await this.clientsService.findByUsername(username);
-      if (user && await this.comparePasswords(pass, user.password)) {
-        const { password, ...result } = user;
-        return result;
+      if (user && (await this.comparePasswords(pass, user.password))) {
+        return plainToClass(ClientEntity, user);
       }
       return null;
     } catch (error) {
@@ -38,7 +38,10 @@ export class AuthService {
     };
   }
 
-  private async comparePasswords(plainTextPassword: string, hashedPassword: string): Promise<boolean> {
+  private async comparePasswords(
+    plainTextPassword: string,
+    hashedPassword: string,
+  ): Promise<boolean> {
     return bcrypt.compare(plainTextPassword, hashedPassword);
   }
 }

@@ -1,46 +1,44 @@
-import {
-  Entity,
-  Column,
-  PrimaryGeneratedColumn,
-  ManyToOne,
-  CreateDateColumn,
-} from 'typeorm';
-import { Client } from '../../clients/entities/client.entity';
+import { DocumentEntity } from 'src/documents/entities/document.entity';
+import { ClientEntity } from '../../clients/entities/client.entity';
+import { ApiResponseProperty } from '@nestjs/swagger';
+import { CertificateEntity } from 'src/certificates/entities/certificate.entity';
 
 export enum SignatureType {
   ADVANCED = 'Avançada',
   ICP_BRASIL = 'ICP-Brasil',
 }
 
-@Entity()
 export class Signature {
-  @PrimaryGeneratedColumn('uuid')
+  @ApiResponseProperty({ type: String })
   id: string;
 
-  @ManyToOne(() => Client)
-  signer: Client;
+  @ApiResponseProperty({ type: ClientEntity })
+  signer: ClientEntity;
 
-  @Column()
+  @ApiResponseProperty({ type: String })
   signerId: string;
 
-  @Column()
+  @ApiResponseProperty({ type: String })
   signerCpf: string;
 
-  @CreateDateColumn()
+  @ApiResponseProperty({ type: Date })
   signedAt: Date;
 
-  @Column({
-    type: 'varchar',
-    default: SignatureType.ADVANCED,
-  })
+  @ApiResponseProperty({ enum: SignatureType })
   type: string;
 
-  @Column({ nullable: true })
+  @ApiResponseProperty({ type: String })
   certificateId: string;
 
-  @Column()
+  @ApiResponseProperty({ type: CertificateEntity })
+  certificate: CertificateEntity;
+
+  @ApiResponseProperty({ type: String })
   documentId: string;
 
-  @Column({ nullable: true })
+  @ApiResponseProperty({ type: DocumentEntity })
+  document: DocumentEntity;
+
+  @ApiResponseProperty({ type: String })
   signatureData: string;
 }

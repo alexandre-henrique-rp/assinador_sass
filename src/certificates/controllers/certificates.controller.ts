@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  UseGuards,
+  HttpException,
+  Query,
+  Res,
+  HttpStatus,
+} from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -6,10 +17,12 @@ import {
   ApiBearerAuth,
   ApiParam,
   ApiBody,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { CertificatesService } from '../services/certificates.service';
 import { CreateCertificateDto } from '../dto/create-certificate.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { Response } from 'express';
 
 @ApiTags('certificados')
 @Controller('certificates')
@@ -17,8 +30,7 @@ export class CertificatesController {
   constructor(private certificatesService: CertificatesService) {}
 
   @Post('ca')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  // @ApiBearerAuth()
   @ApiOperation({ summary: 'Criar Autoridade Certificadora (AC)' })
   @ApiResponse({
     status: 201,
@@ -26,12 +38,12 @@ export class CertificatesController {
   })
   @ApiResponse({ status: 400, description: 'Erro ao criar AC' })
   createCA() {
+    console.log('Criando AC...');
     return this.certificatesService.createCACertificate();
   }
 
   @Post()
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  // @ApiBearerAuth()
   @ApiOperation({ summary: 'Criar certificado para cliente' })
   @ApiBody({ type: CreateCertificateDto })
   @ApiResponse({
@@ -96,8 +108,7 @@ export class CertificatesController {
   }
 
   @Get(':id/verify')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  // @ApiBearerAuth()
   @ApiOperation({ summary: 'Verificar validade de um certificado' })
   @ApiParam({ name: 'id', description: 'ID do certificado' })
   @ApiResponse({
@@ -110,8 +121,7 @@ export class CertificatesController {
   }
 
   @Post(':id/invalidate')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  // @ApiBearerAuth()
   @ApiOperation({ summary: 'Invalidar um certificado' })
   @ApiParam({ name: 'id', description: 'ID do certificado' })
   @ApiResponse({
@@ -121,5 +131,76 @@ export class CertificatesController {
   @ApiResponse({ status: 404, description: 'Certificado não encontrado' })
   invalidateCertificate(@Param('id') id: string) {
     return this.certificatesService.invalidateCertificate(id);
+  }
+
+  @Get('download-pfx/:clientId')
+  @ApiOperation({ summary: 'Download do PFX' })
+  @ApiParam({ name: 'clientId', description: 'ID do cliente' })
+  @ApiQuery({ name: 'password', description: 'Senha para o PFX' })
+  @ApiResponse({
+    status: 200,
+    description: 'PFX baixado com sucesso',
+  })
+  @ApiResponse({ status: 404, description: 'Certificado não encontrado' })
+  async downloadPFX(
+    @Param('clientId') clientId: string,
+    @Query('password') password: string,
+    @Res() res: Response,
+  ) {
+    if (!password) {
+      throw new HttpException(
+        'Senha obrigatória para o PFX.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    try {
+      // Chama o serviço para gerar o PFX
+      const { buffer, fileName } = await this.certificatesService.createPfx(
+        clientId,
+        password,
+      );
+
+      // Configura a resposta para download
+      res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
+      res.setHeader('Content-Type', 'application/x-pkcs12');
+      res.setHeader('Content-Length', buffer.length);
+
+      return res.send(buffer);
+    } catch (error) {
+      console.error('Erro ao baixar o PFX:', error);
+      throw new HttpException(
+        'Erro ao baixar o PFX.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Get('ac/download-p7b')
+  @ApiOperation({ summary: 'Download do P7B' })
+  @ApiResponse({
+    status: 200,
+    description: 'P7B baixado com sucesso',
+  })
+  @ApiResponse({ status: 404, description: 'Certificado não encontrado' })
+  async downloadCertificateP7b(@Res() res: Response) {
+    try {
+      // Chama o serviço para gerar o P7B
+      const { buffer, fileName } =
+        await this.certificatesService.generateCertificateP7b();
+
+      // Configura a resposta para download
+      res.setHeader('Content-Disposition', `attachment; filename=${fileName}`);
+      res.setHeader('Content-Type', 'application/x-pkcs12');
+      res.setHeader('Content-Length', buffer.length);
+
+      return res.send(buffer);
+    } catch (error) {
+      console.error('Erro ao baixar o P7B:', error);
+      throw new HttpException(
+        'Erro ao baixar o P7B.',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
   }
 }

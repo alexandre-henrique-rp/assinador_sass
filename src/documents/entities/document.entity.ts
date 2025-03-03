@@ -1,52 +1,50 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, ManyToMany, JoinTable, CreateDateColumn, UpdateDateColumn } from 'typeorm';
-import { Client } from '../../clients/entities/client.entity';
+import { ClientEntity } from '../../clients/entities/client.entity';
 import { Signature } from '../../signatures/entities/signature.entity';
+import { ApiResponseProperty } from '@nestjs/swagger';
 
-@Entity()
-export class Document {
-  @PrimaryGeneratedColumn('uuid')
+export class DocumentEntity {
+  @ApiResponseProperty({ type: String })
   id: string;
 
-  @Column()
+  @ApiResponseProperty({ type: String })
   originalName: string;
 
-  @Column()
+  @ApiResponseProperty({ type: Number })
   size: number;
 
-  @Column()
+  @ApiResponseProperty({ type: String })
   documentType: string;
 
-  @Column()
+  @ApiResponseProperty({ type: String })
   extension: string;
 
-  @Column()
+  @ApiResponseProperty({ type: String })
   hash: string;
 
-  @Column()
+  @ApiResponseProperty({ type: String })
   storagePath: string;
 
-  @Column()
+  @ApiResponseProperty({ type: String })
   downloadUrl: string;
 
-  @Column()
+  @ApiResponseProperty({ type: String })
   viewUrl: string;
-  
-  @Column({ default: false })
+
+  @ApiResponseProperty({ type: Boolean })
   isSigned: boolean;
 
-  @ManyToOne(() => Client, client => client.documents)
-  client: Client;
+  @ApiResponseProperty({ type: ClientEntity })
+  client: ClientEntity;
 
-  @Column()
+  @ApiResponseProperty({ type: String })
   clientId: string;
 
-  @ManyToMany(() => Signature)
-  @JoinTable()
+  @ApiResponseProperty({ type: [Signature] })
   signatures: Signature[];
 
-  @CreateDateColumn()
+  @ApiResponseProperty({ type: Date })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @ApiResponseProperty({ type: Date })
   updatedAt: Date;
 }

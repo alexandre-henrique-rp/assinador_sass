@@ -1,52 +1,55 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, CreateDateColumn, UpdateDateColumn } from 'typeorm';
-import { Client } from '../../clients/entities/client.entity';
 import { Exclude } from 'class-transformer';
+import { ClientEntity } from 'src/clients/entities/client.entity';
+import { ApiResponseProperty } from '@nestjs/swagger';
 
-@Entity()
-export class Certificate {
-  @PrimaryGeneratedColumn('uuid')
+export class CertificateEntity {
+  @ApiResponseProperty({ type: String })
   id: string;
 
-  @Column()
+  @ApiResponseProperty({ type: String })
   subject: string;
 
-  @Column()
+  @ApiResponseProperty({ type: String })
   serialNumber: string;
 
-  @Column()
+  @ApiResponseProperty({ type: String })
   publicKey: string;
 
-  @Column()
+  @ApiResponseProperty({ type: String })
   @Exclude()
   privateKey: string;
 
-  @Column()
+  @ApiResponseProperty({ type: String })
   issuedAt: Date;
 
-  @Column()
+  @ApiResponseProperty({ type: String })
   validUntil: Date;
 
-  @Column({ default: true })
+  @ApiResponseProperty({ type: Boolean })
   isValid: boolean;
 
-  @Column()
+  @ApiResponseProperty({ type: String })
   issuer: string;
 
-  @Column({ type: 'text' })
+  @ApiResponseProperty({ type: String })
   certificatePem: string;
 
-  @ManyToOne(() => Client, client => client.certificates)
-  client: Client;
+  @ApiResponseProperty({ type: CertificateEntity })
+  client?: ClientEntity;
 
-  @Column({ nullable: true })
+  @ApiResponseProperty({ type: String })
   clientId: string;
 
-  @Column({ default: false })
+  @ApiResponseProperty({ type: Boolean })
   isCA: boolean;
 
-  @CreateDateColumn()
+  @ApiResponseProperty({ type: String })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @ApiResponseProperty({ type: String })
   updatedAt: Date;
+
+  constructor(partial: Partial<CertificateEntity>) {
+    Object.assign(this, partial);
+  }
 }

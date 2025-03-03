@@ -1,56 +1,65 @@
-import { Entity, Column, PrimaryGeneratedColumn, OneToMany, CreateDateColumn, UpdateDateColumn } from 'typeorm';
-import { Certificate } from '../../certificates/entities/certificate.entity';
-import { Document } from '../../documents/entities/document.entity';
-import { Exclude } from 'class-transformer';
+import { CertificateEntity } from '../../certificates/entities/certificate.entity';
+import { DocumentEntity } from '../../documents/entities/document.entity';
+import { Exclude, Transform } from 'class-transformer';
+import { ApiResponseProperty } from '@nestjs/swagger';
 
-@Entity()
-export class Client {
-  @PrimaryGeneratedColumn('uuid')
+export class ClientEntity {
+  @ApiResponseProperty({ type: String })
   id: string;
 
-  @Column()
+  @ApiResponseProperty({ type: String })
   name: string;
 
-  @Column({ unique: true })
+  @ApiResponseProperty({ type: String })
+  @Transform(({ value }) =>
+    value.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'),
+  )
   cpf: string;
 
-  @Column({ type: 'date' })
+  @ApiResponseProperty({ type: Date })
+  @Transform(({ value }) =>
+    value.toISOString().split('T')[0].split('-').reverse().join('/'),
+  )
   birthDate: Date;
 
-  @Column({ unique: true })
+  @ApiResponseProperty({ type: String })
   email: string;
 
-  @Column({ unique: true })
+  @ApiResponseProperty({ type: String })
   username: string;
 
-  @Column()
+  @ApiResponseProperty({ type: String })
   @Exclude()
-  password: string;
+  password?: string;
 
-  @Column({ default: false })
+  @ApiResponseProperty({ type: Boolean })
   hasCertificate: boolean;
 
-  @Column({ default: false })
+  @ApiResponseProperty({ type: Boolean })
   isCertificateValid: boolean;
 
-  @Column({ default: true })
+  @ApiResponseProperty({ type: Boolean })
   isActive: boolean;
 
-  @Column({ nullable: true })
+  @ApiResponseProperty({ type: String })
   documentPhotoUrl: string;
 
-  @Column({ nullable: true })
+  @ApiResponseProperty({ type: String })
   facialPhotoUrl: string;
 
-  @OneToMany(() => Certificate, (certificate) => certificate.client)
-  certificates: Certificate[];
+  @ApiResponseProperty({ type: [CertificateEntity] })
+  certificates: CertificateEntity[];
 
-  @OneToMany(() => Document, (document) => document.client)
-  documents: Document[];
+  @ApiResponseProperty({ type: [DocumentEntity] })
+  documents: DocumentEntity[];
 
-  @CreateDateColumn()
+  @ApiResponseProperty({ type: Date })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @ApiResponseProperty({ type: Date })
   updatedAt: Date;
+
+  constructor(partial: Partial<ClientEntity>) {
+    Object.assign(this, partial);
+  }
 }

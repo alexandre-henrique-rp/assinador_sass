@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, UseGuards, Request } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from '../services/auth.service';
@@ -12,7 +12,10 @@ export class AuthController {
   @UseGuards(AuthGuard('local'))
   @Post('login')
   @ApiOperation({ summary: 'Autenticar usuário' })
-  @ApiResponse({ status: 200, description: 'Retorna token JWT e dados do usuário' })
+  @ApiResponse({
+    status: 200,
+    description: 'Retorna token JWT e dados do usuário',
+  })
   @ApiResponse({ status: 401, description: 'Credenciais inválidas' })
   @ApiBody({ type: LoginDto })
   async login(@Request() req) {

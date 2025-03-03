@@ -2,11 +2,15 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  HttpException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { CreateClientDto } from '../dto/create-client.dto';
 import { UpdateClientDto } from '../dto/update-client.dto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ErrorEntity } from 'src/error.entity';
+import { plainToClass } from 'class-transformer';
+import { ClientEntity } from '../entities/client.entity';
 
 @Injectable()
 export class ClientsService {
@@ -25,7 +29,7 @@ export class ClientsService {
       throw new NotFoundException(`Cliente com ID ${id} não encontrado`);
     }
 
-    return client;
+    return plainToClass(ClientEntity, client);
   }
 
   async findByUsername(username: string) {
@@ -43,52 +47,78 @@ export class ClientsService {
   }
 
   async findByCpf(cpf: string) {
-    const client = await this.prisma.client.findUnique({
-      where: { cpf },
-    });
+    try {
+      const client = await this.prisma.client.findUnique({
+        where: { cpf },
+        include: {
+          certificates: true,
+          documents: true,
+        },
+      });
 
-    if (!client) {
-      throw new NotFoundException(`Cliente com CPF ${cpf} não encontrado`);
+      if (!client) {
+        throw new NotFoundException(`Cliente com CPF ${cpf} não encontrado`);
+      }
+
+      return client;
+    } catch (error) {
+      const retorno: ErrorEntity = {
+        message: error.message,
+      };
+      throw new HttpException(retorno, 400);
     }
-
-    return client;
   }
 
-  async create(createClientDto: CreateClientDto) {
+  async create(
+    createClientDto: CreateClientDto,
+  ): Promise<ClientEntity | ErrorEntity> {
+    try {
+      const existingCpf = await this.prisma.client.findUnique({
+        where: { cpf: createClientDto.cpf },
+      });
+      if (existingCpf) {
+        throw new ConflictException(
+          `CPF ${createClientDto.cpf} já está em uso`,
+        );
+      }
+
+      const existingEmail = await this.prisma.client.findUnique({
+        where: { email: createClientDto.email },
+      });
+      if (existingEmail) {
+        throw new ConflictException(
+          `Email ${createClientDto.email} já está em uso`,
+        );
+      }
+
+      const existingUsername = await this.prisma.client.findUnique({
+        where: { username: createClientDto.username },
+      });
+      if (existingUsername) {
+        throw new ConflictException(
+          `Nome de usuário ${createClientDto.username} já está em uso`,
+        );
+      }
+
+      // Cria o novo cliente com a senha criptografada
+      const client = await this.prisma.client.create({
+        data: {
+          ...createClientDto,
+          cpf: createClientDto.cpf.replace(/\D/g, ''),
+          name: createClientDto.name.toUpperCase(),
+          password: await this.hashPassword(createClientDto.password),
+          birthDate: new Date(createClientDto.birthDate),
+        },
+      });
+
+      return plainToClass(ClientEntity, client);
+    } catch (error) {
+      const retorno: ErrorEntity = {
+        message: error.message,
+      };
+      throw new HttpException(retorno, 400);
+    }
     // Verifica se já existe um cliente com o CPF, email ou username fornecidos
-    const existingCpf = await this.prisma.client.findUnique({
-      where: { cpf: createClientDto.cpf },
-    });
-    if (existingCpf) {
-      throw new ConflictException(`CPF ${createClientDto.cpf} já está em uso`);
-    }
-
-    const existingEmail = await this.prisma.client.findUnique({
-      where: { email: createClientDto.email },
-    });
-    if (existingEmail) {
-      throw new ConflictException(
-        `Email ${createClientDto.email} já está em uso`,
-      );
-    }
-
-    const existingUsername = await this.prisma.client.findUnique({
-      where: { username: createClientDto.username },
-    });
-    if (existingUsername) {
-      throw new ConflictException(
-        `Nome de usuário ${createClientDto.username} já está em uso`,
-      );
-    }
-
-    // Cria o novo cliente com a senha criptografada
-    return this.prisma.client.create({
-      data: {
-        ...createClientDto,
-        password: await this.hashPassword(createClientDto.password),
-        birthDate: new Date(createClientDto.birthDate),
-      },
-    });
   }
 
   async update(id: string, updateClientDto: UpdateClientDto) {

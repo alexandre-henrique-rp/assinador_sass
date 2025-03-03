@@ -16,7 +16,9 @@ import { ClientsModule } from '../clients/clients.module';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
-        secret: configService.get('JWT_SECRET') || 'super-secret-key-change-in-production',
+        secret:
+          configService.get('JWT_SECRET') ||
+          'super-secret-key-change-in-production',
         signOptions: { expiresIn: '1d' },
       }),
     }),
