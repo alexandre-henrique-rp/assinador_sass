@@ -24,7 +24,8 @@ model Client {
   documentPhotoUrl   String?
   facialPhotoUrl     String?
   certificates       Certificate[]
-  documents          Document[]
+  documents          Document[]    @relation("ClientDocuments")
+  uploadedDocuments  Document[]    @relation("UploadedDocuments") // Nome mais descritivo
   signatures         Signature[]
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
@@ -41,41 +42,43 @@ model Certificate {
   isValid        Boolean  @default(true)
   issuer         String
   certificatePem String
-  client         Client?  @relation(fields: [clientId], references: [id])
-  clientId       String?
+  client         Client?   @relation(fields: [clientId], references: [id])
+  clientId       String?   // Agora obrigatório
   isCA           Boolean  @default(false)
+  isDownloaded   Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
-  isDownloaded   Boolean  @default(false)
 
   @@unique([subject, serialNumber])
 }
 
 model Document {
-  id           String      @id @default(uuid())
-  originalName String
-  size         Int
-  documentType String
-  extension    String
-  hash         String
-  storagePath  String
-  downloadUrl  String
-  viewUrl      String
-  isSigned     Boolean     @default(false)
-  client       Client      @relation(fields: [clientId], references: [id])
-  clientId     String
-  signatures   Signature[]
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  id            String      @id @default(uuid())
+  originalName  String
+  size          Int
+  documentType  String
+  extension     String
+  hash          String
+  storagePath   String
+  downloadUrl   String
+  viewUrl       String
+  isSigned      Boolean     @default(false)
+  client        Client      @relation("ClientDocuments", fields: [clientId], references: [id])
+  clientId      String
+  signatures    Signature[]
+  uploader      Client?     @relation("UploadedDocuments", fields: [uploaderId], references: [id]) // Agora mais claro
+  uploaderId    String?
+  atualName     String      @unique
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   @@unique([clientId, hash])
 }
 
 model Signature {
   id            String   @id @default(uuid())
-  signer        Client   @relation(fields: [signerId], references: [id])
+  signer        Client   @relation(fields: [signerId], references: [cpf])
   signerId      String
-  signerCpf     String
   signedAt      DateTime @default(now())
   type          String   @default("Avançada")
   certificateId String?

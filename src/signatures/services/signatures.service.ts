@@ -68,7 +68,7 @@ export class SignaturesService {
     const signature = await this.prisma.signature.create({
       data: {
         signerId: client.id,
-        signerCpf: client.cpf,
+        // signerCpf: client.cpf,
         type: SignatureType.ADVANCED,
         documentId: document.id,
         signatureData,
@@ -124,7 +124,6 @@ export class SignaturesService {
     const signature = await this.prisma.signature.create({
       data: {
         signerId: client.id,
-        signerCpf: client.cpf,
         type: SignatureType.ICP_BRASIL,
         documentId: document.id,
         certificateId: certificate.id,

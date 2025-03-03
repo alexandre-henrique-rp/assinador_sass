@@ -36,9 +36,11 @@ export class DocumentsService {
     return this.prisma.document.findMany({ where: { clientId: client.id } });
   }
 
-  async create(file: Express.Multer.File, cpf: string) {
+  async create(file: Express.Multer.File, cpf: string, operationId: string) {
     try {
-      const client = await this.clientsService.findByCpf(cpf);
+      const client = await this.clientsService.findByCpf(
+        cpf.replace(/\D/g, ''),
+      );
 
       const fileBuffer = fs.readFileSync(file.path);
       const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
@@ -57,19 +59,22 @@ export class DocumentsService {
       fs.copyFileSync(file.path, absolutePath);
       fs.unlinkSync(file.path);
 
-      const baseUrl = `http://localhost:3000/uploads/documents/${uniqueFilename}`;
+      const baseUrl = `http://localhost:3000/documents/download/${originalName}`;
+      const baseUrl2 = `http://localhost:3000/documents/view/${originalName}`;
 
       return this.prisma.document.create({
         data: {
-          originalName,
+          originalName: file.originalname,
           size: file.size,
           documentType: file.mimetype,
           extension,
           hash,
           storagePath,
           downloadUrl: baseUrl,
-          viewUrl: baseUrl,
+          viewUrl: baseUrl2,
           clientId: client.id,
+          atualName: uniqueFilename,
+          uploaderId: operationId,
         },
       });
     } catch (error) {
@@ -82,15 +87,17 @@ export class DocumentsService {
     }
   }
 
-  async remove(id: string) {
-    const document = await this.findOne(id);
+  async remove(fileName: string) {
+    const document = await this.prisma.document.findFirst({
+      where: { originalName: fileName },
+    });
 
     const filePath = path.join(process.cwd(), document.storagePath);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
 
-    await this.prisma.document.delete({ where: { id } });
+    await this.prisma.document.delete({ where: { id: document.id } });
   }
 
   async getDocumentWithManifest(id: string) {
@@ -197,5 +204,25 @@ export class DocumentsService {
         },
       },
     };
+  }
+
+  async DownloadFile(fileName: string) {
+    const req = await this.prisma.document.findFirst({
+      where: { originalName: fileName },
+    });
+    const filePath = path.join(process.cwd(), req.storagePath);
+    return filePath;
+  }
+
+  async update(id: string, file: Express.Multer.File) {
+    const document = await this.findOne(id);
+    const filePath = path.join(process.cwd(), document.storagePath);
+    fs.unlinkSync(filePath);
+    const newFilePath = path.join(process.cwd(), file.path);
+    fs.renameSync(newFilePath, filePath);
+    return this.prisma.document.update({
+      where: { id },
+      data: { originalName: file.originalname },
+    });
   }
 }
