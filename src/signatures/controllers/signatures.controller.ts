@@ -15,15 +15,14 @@ export class SignaturesController {
   constructor(private readonly signaturesService: SignaturesService) {}
 
   @Post('advanced')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  // @UseGuards(JwtAuthGuard)
+  // @ApiBearerAuth()
   @ApiOperation({ summary: 'Assinar documento com assinatura avançada' })
   @ApiResponse({ status: 201, description: 'Documento assinado com sucesso' })
   @ApiResponse({ status: 400, description: 'Erro ao assinar documento' })
   async signDocumentAdvanced(@Body() createSignatureDto: CreateSignatureDto) {
     return this.signaturesService.createAdvancedSignature(
       createSignatureDto.documentId,
-      createSignatureDto.signerId,
       createSignatureDto,
     );
   }
@@ -41,7 +40,7 @@ export class SignaturesController {
   }
 
   @Get('document/:documentId')
-  @UseGuards(JwtAuthGuard)
+  // @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Obter assinaturas de um documento' })
   @ApiResponse({

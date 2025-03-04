@@ -19,7 +19,7 @@ import * as fs from 'fs';
 import { Response } from 'express';
 
 @ApiTags('Ducumentação')
-@Controller('documentes')
+@Controller('documents')
 export class DocumentsController {
   constructor(private readonly documentsService: DocumentsService) {}
 
@@ -31,7 +31,7 @@ export class DocumentsController {
 
         filename: (req, file, cb) => {
           //verificar se o nome do arquivo ja existe
-          const nameFile = file.originalname.replace(/\s+/g, '_');
+          const nameFile = smartSanitizeIdentifier(file.originalname);
           const extencion = extname(file.originalname);
           //pegar o nome do arquivo sem a extensao
           const fileName = nameFile.split(extencion)[0];
@@ -54,13 +54,19 @@ export class DocumentsController {
 
   @Get('download/:fileName')
   async download(@Param('fileName') fileName: string, @Res() res: Response) {
-    const OriginalPath = await this.documentsService.DownloadFile(fileName);
-    return res.download(OriginalPath);
+    const Signer = this.documentsService.IsSing(fileName);
+    if (!Signer) {
+      const OriginalPath = await this.documentsService.ViewFile(fileName);
+      return res.download(OriginalPath);
+    }
+    const BufferFile = await this.documentsService.DownloadFile(fileName);
+    const buffer = Buffer.from(BufferFile);
+    return res.send(buffer);
   }
 
   @Get('view/:fileName')
   async view(@Param('fileName') fileName: string, @Res() res: Response) {
-    const OriginalPath = await this.documentsService.DownloadFile(fileName);
+    const OriginalPath = await this.documentsService.ViewFile(fileName);
     return res.sendFile(OriginalPath);
   }
 
@@ -98,4 +104,24 @@ export class DocumentsController {
     await this.documentsService.remove(fileName);
     return { message: 'Documento removido com sucesso' };
   }
+}
+function smartSanitizeIdentifier(input: string) {
+  if (!input) return '';
+  // Remove todos os caracteres não numéricos
+  const numericOnly = input.replace(/[^\d]/g, '');
+
+  // Se for exatamente 11 ou 14 dígitos numéricos
+  if (numericOnly.length === 11 || numericOnly.length === 14) {
+    return numericOnly;
+  }
+
+  // Para nomes de arquivos
+  const sanitized = input
+    .normalize('NFD') // Normaliza caracteres acentuados
+    .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+    .replace(/[^a-zA-Z0-9_\-\.]/g, '_') // Substitui caracteres inválidos
+    .replace(/\s+/g, '_') // Substitui múltiplos espaços
+    .toLowerCase(); // Converte para minúsculas
+
+  return sanitized;
 }

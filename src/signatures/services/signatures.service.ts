@@ -2,6 +2,7 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import * as forge from 'node-forge';
 import * as crypto from 'crypto';
@@ -10,7 +11,6 @@ import * as path from 'path';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ClientsService } from '../../clients/services/clients.service';
 import { DocumentsService } from '../../documents/services/documents.service';
-import { CertificatesService } from '../../certificates/services/certificates.service';
 import { CreateSignatureDto } from '../dto/create-signature.dto';
 import { SignatureType } from '../entities/signature.entity';
 
@@ -20,7 +20,6 @@ export class SignaturesService {
     private prisma: PrismaService,
     private clientsService: ClientsService,
     private documentsService: DocumentsService,
-    private certificatesService: CertificatesService,
   ) {}
 
   async findAll() {
@@ -41,46 +40,54 @@ export class SignaturesService {
 
   async createAdvancedSignature(
     documentId: string,
-    signerId: string,
     createSignatureDto: CreateSignatureDto,
   ) {
-    if (createSignatureDto.type !== SignatureType.ADVANCED) {
-      throw new BadRequestException(
-        'Tipo de assinatura inválido para assinatura avançada',
-      );
+    const client = await this.clientsService.findByCpf(
+      this.documentsService.smartSanitizeIdentifier(
+        createSignatureDto.signerCpf,
+      ),
+    );
+
+    const document = await this.documentsService.findOne(documentId);
+
+    // Verificações
+    if (!client) {
+      throw new NotFoundException('Cliente não encontrado');
     }
 
-    const client = await this.clientsService.findByCpf(
-      createSignatureDto.signerCpf,
-    );
-    const document = await this.documentsService.findOne(
-      createSignatureDto.documentId,
-    );
+    if (!document) {
+      throw new NotFoundException('Documento não encontrado');
+    }
 
-    const filePath = path.join(process.cwd(), document.storagePath);
-    const fileBuffer = fs.readFileSync(filePath);
-    const timestamp = new Date().toISOString();
-    const signatureData = crypto
-      .createHash('sha256')
-      .update(Buffer.concat([fileBuffer, Buffer.from(timestamp)]))
-      .digest('hex');
+    try {
+      const filePath = path.join(process.cwd(), document.storagePath);
+      const fileBuffer = fs.readFileSync(filePath);
+      const timestamp = new Date().toISOString();
 
-    const signature = await this.prisma.signature.create({
-      data: {
-        signerId: client.id,
-        // signerCpf: client.cpf,
-        type: SignatureType.ADVANCED,
-        documentId: document.id,
-        signatureData,
-      },
-    });
+      const signatureData = crypto
+        .createHash('sha256')
+        .update(Buffer.concat([fileBuffer, Buffer.from(timestamp)]))
+        .digest('hex');
 
-    await this.prisma.document.update({
-      where: { id: document.id },
-      data: { isSigned: true },
-    });
+      const signature = await this.prisma.signature.create({
+        data: {
+          signerId: client.cpf, // Mudança aqui: use o CPF, não o ID
+          type: SignatureType.ADVANCED,
+          documentId: document.id,
+          signatureData,
+        },
+      });
 
-    return signature;
+      await this.prisma.document.update({
+        where: { id: document.id },
+        data: { isSigned: true },
+      });
+
+      return signature;
+    } catch (error) {
+      console.error('Erro ao criar assinatura:', error);
+      throw new InternalServerErrorException('Erro ao processar assinatura');
+    }
   }
 
   async createQualifiedSignature(createSignatureDto: CreateSignatureDto) {

@@ -22,9 +22,4 @@ export class CreateSignatureDto {
   @IsOptional()
   @IsString()
   certificateId?: string;
-
-  @ApiProperty({ required: false, example: 'uuid-do-certificado' })
-  @IsOptional()
-  @IsString()
-  signerId?: string;
 }

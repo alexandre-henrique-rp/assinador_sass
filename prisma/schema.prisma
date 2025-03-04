@@ -77,7 +77,7 @@ model Document {
 
 model Signature {
   id            String   @id @default(uuid())
-  signer        Client   @relation(fields: [signerId], references: [cpf])
+  signer        Client   @relation(fields: [signerId], references: [id])
   signerId      String
   signedAt      DateTime @default(now())
   type          String   @default("Avançada")
