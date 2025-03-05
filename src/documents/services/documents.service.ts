@@ -9,6 +9,7 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ClientsService } from '../../clients/services/clients.service';
 import { degrees, PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import * as QRCode from 'qrcode';
 
 @Injectable()
 export class DocumentsService {
@@ -119,27 +120,9 @@ export class DocumentsService {
     }
   }
 
-  async addManifestToPdf(
-    document: {
-      id: string;
-      originalName: string;
-      size: number;
-      documentType: string;
-      extension: string;
-      hash: string;
-      storagePath: string;
-      downloadUrl: string;
-      viewUrl: string;
-      isSigned: boolean;
-      clientId: string;
-      uploaderId: string | null;
-      atualName: string;
-      createdAt: Date;
-      updatedAt: Date;
-    },
-    originalPath: fs.PathOrFileDescriptor,
-  ) {
+  async addManifestToPdf(document: any, originalPath: fs.PathOrFileDescriptor) {
     try {
+      console.log(document);
       // Load the original PDF asynchronously
       const pdfBytes = await fs.promises.readFile(String(originalPath));
       const pdfDoc = await PDFDocument.load(pdfBytes);
@@ -147,24 +130,121 @@ export class DocumentsService {
       // Get fonts
       const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
+      // Create a new page for the manifest
+      const manifestPage = pdfDoc.addPage();
+      const { height: manifestHeight } = manifestPage.getSize();
+
+      const UrlConsulta = `https://sisnato.com.br/validar/${document.id}`;
+
+      // Add manifest content
+      manifestPage.drawText('MANIFESTO DE', {
+        x: 220,
+        y: manifestHeight - 80,
+        size: 18,
+        color: rgb(0, 0, 0),
+        font: helveticaFont,
+      });
+      // Add manifest content
+      manifestPage.drawText('ASSINATURAS', {
+        x: 220,
+        y: manifestHeight - 100,
+        size: 18,
+        color: rgb(0, 0, 0),
+        font: helveticaFont,
+      });
+
+      const QRC = await this.gerarQRCode(UrlConsulta);
+
+      // Incorporar a imagem ao PDF
+      const QrImage = await pdfDoc.embedPng(QRC);
+
+      // Obter dimensões da imagem
+      const QrDims = QrImage.scale(0.25); // Reduzir tamanho da imagem (ajuste conforme necessário)
+
+      manifestPage.drawImage(QrImage, {
+        x: 400, // Posição ajustada para a margem direita
+        y: manifestHeight - QrDims.height - 50, // Posição ajustada para o topo
+        width: QrDims.width,
+        height: QrDims.height,
+      });
+
+      manifestPage.drawImage(QrImage, {
+        x: 100, // Posição ajustada para a margem direita
+        y: manifestHeight - QrDims.height - 50, // Posição ajustada para o topo
+        width: QrDims.width,
+        height: QrDims.height,
+      });
+
+      manifestPage.drawText(`Código de validação: ${document.id}`, {
+        x: 100,
+        y: manifestHeight - 160,
+        size: 14,
+        font: helveticaFont,
+      });
+
+      manifestPage.drawText(
+        'Documento assinado com o uso de Assinatura Avançada ICP Brasil,',
+        { x: 50, y: manifestHeight - 210, size: 9, font: helveticaFont },
+      );
+
+      manifestPage.drawText(
+        'no Assinador Sisnato, pelos seguintes signatários:',
+        { x: 50, y: manifestHeight - 225, size: 9, font: helveticaFont },
+      );
+
+      // Signatário details
+      manifestPage.drawText(
+        `${document.client.name} - CPF: ${document.client.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') ?? 'NÃO INFORMADO'} - assinatura Avançada ICP Brasil`,
+        { x: 50, y: manifestHeight - 250, size: 9, font: helveticaFont },
+      );
+
+      // Validation links
+      manifestPage.drawText(
+        'Para verificar as assinaturas, acesse o link direto de validação deste documento:',
+        { x: 50, y: manifestHeight - 275, size: 9, font: helveticaFont },
+      );
+
+      manifestPage.drawText(`${UrlConsulta}`, {
+        x: 80,
+        y: manifestHeight - 295,
+        size: 10,
+        color: rgb(0, 0, 1),
+        font: helveticaFont,
+      });
+
+      manifestPage.drawText(
+        'Ou acesse a consulta de documentos assinados disponível no link abaixo e informe',
+        { x: 50, y: manifestHeight - 315, size: 9, font: helveticaFont },
+      );
+
+      console.log(manifestHeight);
+      manifestPage.drawText('o código de validação:', {
+        x: 50,
+        y: manifestHeight - 330,
+        size: 9,
+        font: helveticaFont,
+      });
+
+      manifestPage.drawText('https://sisnato.com.br/validar', {
+        x: 150,
+        y: manifestHeight - 360,
+        size: 10,
+        color: rgb(0, 0, 1),
+        font: helveticaFont,
+      });
+
+      // Save the modified PDF
+      const manifestFilename = `manifesto_${document.originalName}`;
+      const manifestPath = path.join(
+        process.cwd(),
+        'uploads',
+        'manifests',
+        manifestFilename,
+      );
+
       // Get all pages of the original document
       const pages = pdfDoc.getPages();
 
-      // // Add notes to top right corner of each page
-      // pages.forEach((page) => {
-      //   const { width, height } = page.getSize();
-      //   page.drawText(
-      //     'Documento assinado no assinador Sisnato. Para Validar o documento e suas assinaturas acesse https://sisnato.com.br/validar/796fwg197t1f97',
-      //     {
-      //       x: width - 5,
-      //       y: height - 750,
-      //       size: 8,
-      //       color: rgb(0.7, 0, 0),
-      //       font: helveticaFont,
-      //       rotate: degrees(90),
-      //     },
-      //   );
-      // });
       // Carregar a imagem (PNG ou JPEG)
       const UrlImg =
         'https://arinterface.com.br/assets/img/Logo_Interface_04.png';
@@ -181,7 +261,7 @@ export class DocumentsService {
 
         // Adicionar texto rotacionado
         page.drawText(
-          'Documento assinado no assinador Sisnato. Para Validar o documento e suas assinaturas acesse https://sisnato.com.br/validar/796fwg197t1f97',
+          `Documento assinado no assinador Sisnato. Para Validar o documento e suas assinaturas acesse ${UrlConsulta}`,
           {
             x: width - 12,
             y: height - 735,
@@ -201,91 +281,6 @@ export class DocumentsService {
           rotate: degrees(90),
         });
       });
-
-      // Create a new page for the manifest
-      const manifestPage = pdfDoc.addPage();
-      const { height: manifestHeight } = manifestPage.getSize();
-
-      // Add manifest content
-      manifestPage.drawText('MANIFESTO DE ASSINATURAS', {
-        x: 50,
-        y: manifestHeight - 50,
-        size: 14,
-        color: rgb(0, 0, 0),
-        font: helveticaFont,
-      });
-
-      manifestPage.drawText(`Código de validação: ${document.hash}`, {
-        x: 50,
-        y: manifestHeight - 80,
-        size: 10,
-        font: helveticaFont,
-      });
-
-      manifestPage.drawText(
-        'Documento assinado com o uso de certificado digital ICP Brasil,',
-        { x: 50, y: manifestHeight - 100, size: 10, font: helveticaFont },
-      );
-
-      manifestPage.drawText(
-        'no Assinador Registro de Imóveis, pelos seguintes signatários:',
-        { x: 50, y: manifestHeight - 120, size: 10, font: helveticaFont },
-      );
-
-      // Signatário details
-      manifestPage.drawText(
-        `MURILLO JOSE CARDOSO DE OLIVEIRA (CPF ${document.clientId ?? 'NÃO INFORMADO'})`,
-        { x: 50, y: manifestHeight - 150, size: 10, font: helveticaFont },
-      );
-
-      // Validation links
-      manifestPage.drawText(
-        'Para verificar as assinaturas, acesse o link direto de validação deste documento:',
-        { x: 50, y: manifestHeight - 200, size: 10, font: helveticaFont },
-      );
-
-      manifestPage.drawText(
-        `https://assinador.registrodeimoveis.org.br/validate/${document.hash}`,
-        {
-          x: 50,
-          y: manifestHeight - 220,
-          size: 10,
-          color: rgb(0, 0, 1),
-          font: helveticaFont,
-        },
-      );
-
-      manifestPage.drawText(
-        'Ou acesse a consulta de documentos assinados disponível no link abaixo e informe',
-        { x: 50, y: manifestHeight - 250, size: 10, font: helveticaFont },
-      );
-
-      manifestPage.drawText('o código de validação:', {
-        x: 50,
-        y: manifestHeight - 270,
-        size: 10,
-        font: helveticaFont,
-      });
-
-      manifestPage.drawText(
-        'https://assinador.registrodeimoveis.org.br/validate',
-        {
-          x: 50,
-          y: manifestHeight - 290,
-          size: 10,
-          color: rgb(0, 0, 1),
-          font: helveticaFont,
-        },
-      );
-
-      // Save the modified PDF
-      const manifestFilename = `manifesto_${document.originalName}`;
-      const manifestPath = path.join(
-        process.cwd(),
-        'uploads',
-        'manifests',
-        manifestFilename,
-      );
 
       // Ensure directory exists
       await fs.promises.mkdir(path.dirname(manifestPath), { recursive: true });
@@ -401,5 +396,36 @@ export class DocumentsService {
       .toLowerCase(); // Converte para minúsculas
 
     return sanitized;
+  }
+
+  async gerarQRCode(
+    texto: string,
+    // opcoes: QRCode.QRCodeToBufferOptions = 'qrCode.png',
+  ): Promise<Buffer> {
+    try {
+      // Configurações padrão com opções customizáveis
+      const configPadrao: QRCode.QRCodeToBufferOptions = {
+        type: 'png',
+        errorCorrectionLevel: 'M',
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF',
+        },
+        width: 300,
+        margin: 4,
+      };
+
+      // Gera o QR Code como um buffer
+      const qrCodeBuffer = await QRCode.toBuffer(texto, configPadrao);
+
+      if (!qrCodeBuffer) {
+        throw new Error('Falha ao gerar buffer do QR Code');
+      }
+
+      return qrCodeBuffer;
+    } catch (err) {
+      console.error('Erro ao gerar QR Code Buffer:', err);
+      throw new Error(`Falha ao gerar QR Code: ${err.message}`);
+    }
   }
 }
