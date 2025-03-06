@@ -13,8 +13,7 @@ import { ClientsService } from '../../clients/services/clients.service';
 import { DocumentsService } from '../../documents/services/documents.service';
 import { CreateSignatureDto } from '../dto/create-signature.dto';
 import { SignatureType } from '../entities/signature.entity';
-import { PDFDocument } from 'pdf-lib';
-import { SignPdf } from 'node-signpdf';
+import { execSync } from 'child_process';
 
 @Injectable()
 export class SignaturesService {
@@ -73,9 +72,10 @@ export class SignaturesService {
 
       const signature = await this.prisma.signature.create({
         data: {
-          signerId: client.cpf, // Mudança aqui: use o CPF, não o ID
+          signerId: client.id, // Mudança aqui: use o CPF, não o ID
           type: SignatureType.ADVANCED,
           documentId: document.id,
+          certificateId: createSignatureDto.certificateId,
           signatureData,
         },
       });
@@ -150,9 +150,10 @@ export class SignaturesService {
 
   async createSignatureCertificate(documentId: string, certificateId: string) {
     try {
-      // Buscar documento
+      // Buscar documento no banco de dados
       const documento = await this.prisma.document.findUnique({
         where: { id: documentId },
+        include: { client: true, signatures: true },
       });
 
       if (!documento) {
@@ -173,33 +174,34 @@ export class SignaturesService {
         throw new NotFoundException('Certificado não encontrado');
       }
 
-      // Carregar arquivo do documento
-      const filePath = path.join(process.cwd(), documento.storageManifest);
-      const pdfBuffer = fs.readFileSync(filePath);
+      // Caminho do certificado P12
+      const p12Path = path.join(
+        process.cwd(),
+        certificadoInfos.pathCertificate,
+      );
+      const signedFilePath = path.join(
+        process.cwd(),
+        documento.storageManifest.replace('.pdf', `_signed.pdf`),
+      );
 
-      // Criar instância do PDF e preparar assinatura
-      const pdfDoc = await PDFDocument.load(pdfBuffer);
-      const pdfBytes = await pdfDoc.save();
+      // Criar assinatura digital com OpenSSL usando P12
+      execSync(`
+         openssl smime -sign -binary -in "${documento.storageManifest}" -out "${signedFilePath}" \
+         -signer "${p12Path}" -inkey "${p12Path}" -passin pass:${certificadoInfos.pfxPassword} -outform DER
+     `);
 
-      // Certificado P12
-      const p12Buffer = Buffer.from(certificadoInfos.p12Base64, 'base64');
-
-      // Criar assinatura
-      const signPdf = new SignPdf();
-      const signedPdf = signPdf.sign(pdfBytes, {
-        signer: new Pkcs12(p12Buffer, '1234'),
-      });
-
-      // Salvar o PDF assinado
-      const signedFilePath = filePath.replace('.pdf', `_signed.pdf`);
-      fs.writeFileSync(signedFilePath, signedPdf);
-
-      // Atualizar o documento no banco de dados
+      // Atualizar o banco de dados
       await this.prisma.document.update({
         where: { id: documentId },
         data: {
           ValidSigned: true,
+          storageManifest: signedFilePath,
         },
+      });
+
+      await this.prisma.certificate.update({
+        where: { id: certificateId },
+        data: { isDownloaded: true },
       });
 
       return {

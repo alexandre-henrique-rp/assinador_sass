@@ -1,11 +1,13 @@
-import { Injectable, NotFoundException, HttpException } from '@nestjs/common';
-import * as forge from 'node-forge';
-import { CertificateEntity } from '../entities/certificate.entity';
-import { CreateCertificateDto } from '../dto/create-certificate.dto';
-import { PrismaService } from '../../prisma/prisma.service';
-import { ErrorEntity } from '../../error.entity';
-import { ClientsService } from 'src/clients/services/clients.service';
+import { HttpException, Injectable, NotFoundException } from '@nestjs/common';
 import { plainToClass } from 'class-transformer';
+import { promises as fs } from 'fs';
+import * as forge from 'node-forge';
+import * as path from 'path';
+import { ClientsService } from 'src/clients/services/clients.service';
+import { ErrorEntity } from '../../error.entity';
+import { PrismaService } from '../../prisma/prisma.service';
+import { CreateCertificateDto } from '../dto/create-certificate.dto';
+import { CertificateEntity } from '../entities/certificate.entity';
 
 @Injectable()
 export class CertificatesService {
@@ -778,13 +780,30 @@ export class CertificatesService {
       // Converte para Buffer (DER)
       const pfxBuffer = Buffer.from(forge.asn1.toDer(pfx).getBytes(), 'binary');
 
-      //TODO: Criar o PFX físico
+      if (!certificate || !certificate.subject || !client || !client.cpf) {
+        throw new Error('Dados do certificado ou cliente não encontrados');
+      }
 
-      // Nome do arquivo: NomeCliente_CPF.pfx
       const fileName = `${certificate.subject.replace(/\s+/g, '_')}_${client.cpf.replace(/\D/g, '')}.pfx`;
+      const storagePath = path.join(
+        process.cwd(),
+        'uploads',
+        'certificados',
+        fileName,
+      );
+
+      // Criar diretório caso não exista
+      await fs.mkdir(path.join(process.cwd(), 'uploads', 'certificados'), {
+        recursive: true,
+      });
+
+      // Salvar o PFX no repositório
+      await fs.writeFile(storagePath, pfxBuffer);
 
       // Atualiza o status do certificado
       certificate.isDownloaded = true;
+      certificate.pathCertificate = `upload/certificados/${fileName}`;
+      certificate.pfxPassword = password;
       await this.prisma.certificate.update({
         where: { id: certificate.id },
         data: certificate,

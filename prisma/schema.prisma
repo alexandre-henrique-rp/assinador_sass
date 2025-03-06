@@ -32,47 +32,49 @@ model Client {
 }
 
 model Certificate {
-  id             String   @id @default(uuid())
-  subject        String
-  serialNumber   String
-  publicKey      String
-  privateKey     String
-  issuedAt       DateTime
-  validUntil     DateTime
-  isValid        Boolean  @default(true)
-  issuer         String
-  certificatePem String
-  client         Client?  @relation(fields: [clientId], references: [id])
-  clientId       String? // Agora obrigatório
-  isCA           Boolean  @default(false)
-  isDownloaded   Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id              String   @id @default(uuid())
+  subject         String
+  serialNumber    String
+  publicKey       String
+  privateKey      String
+  issuedAt        DateTime
+  validUntil      DateTime
+  isValid         Boolean  @default(true)
+  issuer          String
+  certificatePem  String
+  client          Client?  @relation(fields: [clientId], references: [id])
+  clientId        String? // Agora obrigatório
+  pathCertificate String?
+  pfxPassword     String?
+  isCA            Boolean  @default(false)
+  isDownloaded    Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@unique([subject, serialNumber])
 }
 
 model Document {
-  id                String      @id @default(uuid())
-  originalName      String
-  size              Int
-  documentType      String
-  extension         String
-  hash              String
-  storagePath       String
-  storageManifest   String?
-  downloadUrl       String
-  viewUrl           String
-  isSigned          Boolean     @default(false)
-  ValidSigned       Boolean     @default(false)
-  client            Client      @relation("ClientDocuments", fields: [clientId], references: [id])
-  clientId          String
-  signatures        Signature[]
-  uploader          Client?     @relation("UploadedDocuments", fields: [uploaderId], references: [id]) // Agora mais claro
-  uploaderId        String?
-  atualName         String      @unique
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
+  id              String      @id @default(uuid())
+  originalName    String
+  size            Int
+  documentType    String
+  extension       String
+  hash            String
+  storagePath     String
+  storageManifest String?
+  downloadUrl     String
+  viewUrl         String
+  isSigned        Boolean     @default(false)
+  ValidSigned     Boolean     @default(false)
+  client          Client      @relation("ClientDocuments", fields: [clientId], references: [id])
+  clientId        String
+  signatures      Signature[]
+  uploader        Client?     @relation("UploadedDocuments", fields: [uploaderId], references: [id]) // Agora mais claro
+  uploaderId      String?
+  atualName       String      @unique
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
   @@unique([clientId, hash])
 }

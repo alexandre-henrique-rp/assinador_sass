@@ -21,13 +21,17 @@
     "oids",
     "opcoes",
     "originalname",
+    "outform",
     "Padrao",
+    "passin",
     "pkeyutl",
     "qrcode",
     "Razao",
+    "repositorio",
     "RIBEIRAO",
     "signpdf",
     "Sisnato",
+    "smime",
     "tranformar",
     "uuid"
   ]
