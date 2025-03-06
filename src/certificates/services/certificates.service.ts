@@ -778,6 +778,8 @@ export class CertificatesService {
       // Converte para Buffer (DER)
       const pfxBuffer = Buffer.from(forge.asn1.toDer(pfx).getBytes(), 'binary');
 
+      //TODO: Criar o PFX físico
+
       // Nome do arquivo: NomeCliente_CPF.pfx
       const fileName = `${certificate.subject.replace(/\s+/g, '_')}_${client.cpf.replace(/\D/g, '')}.pfx`;
 

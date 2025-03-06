@@ -8,11 +8,15 @@ import {
 import { SignaturesService } from '../services/signatures.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CreateSignatureDto } from '../dto/create-signature.dto';
+import { DocumentsService } from 'src/documents/services/documents.service';
 
 @ApiTags('assinaturas')
 @Controller('signatures')
 export class SignaturesController {
-  constructor(private readonly signaturesService: SignaturesService) {}
+  constructor(
+    private readonly signaturesService: SignaturesService,
+    private readonly documentsService: DocumentsService,
+  ) {}
 
   @Post('advanced')
   // @UseGuards(JwtAuthGuard)
@@ -21,10 +25,17 @@ export class SignaturesController {
   @ApiResponse({ status: 201, description: 'Documento assinado com sucesso' })
   @ApiResponse({ status: 400, description: 'Erro ao assinar documento' })
   async signDocumentAdvanced(@Body() createSignatureDto: CreateSignatureDto) {
-    return this.signaturesService.createAdvancedSignature(
+    // const signature = await this.signaturesService.createAdvancedSignature(
+    //   createSignatureDto.documentId,
+    //   createSignatureDto,
+    // );
+    // await this.documentsService.DownloadFile(createSignatureDto.documentId);
+    await this.signaturesService.createSignatureCertificate(
       createSignatureDto.documentId,
-      createSignatureDto,
+      createSignatureDto.certificateId,
     );
+    // return signature;
+    return { message: 'Documento assinado com sucesso' };
   }
 
   @Post('qualified')

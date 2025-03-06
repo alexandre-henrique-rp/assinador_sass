@@ -13,6 +13,8 @@ import { ClientsService } from '../../clients/services/clients.service';
 import { DocumentsService } from '../../documents/services/documents.service';
 import { CreateSignatureDto } from '../dto/create-signature.dto';
 import { SignatureType } from '../entities/signature.entity';
+import { PDFDocument } from 'pdf-lib';
+import { SignPdf } from 'node-signpdf';
 
 @Injectable()
 export class SignaturesService {
@@ -144,5 +146,93 @@ export class SignaturesService {
     });
 
     return signature;
+  }
+
+  async createSignatureCertificate(documentId: string, certificateId: string) {
+    try {
+      // Buscar documento
+      const documento = await this.prisma.document.findUnique({
+        where: { id: documentId },
+      });
+
+      if (!documento) {
+        throw new NotFoundException('Documento não encontrado');
+      }
+
+      if (documento.ValidSigned) {
+        throw new NotFoundException('Documento já assinado');
+      }
+
+      // Buscar informações do certificado
+      const certificadoInfos = await this.prisma.certificate.findUnique({
+        where: { id: certificateId },
+        include: { client: true },
+      });
+
+      if (!certificadoInfos) {
+        throw new NotFoundException('Certificado não encontrado');
+      }
+
+      // Carregar arquivo do documento
+      const filePath = path.join(process.cwd(), documento.storageManifest);
+      const pdfBuffer = fs.readFileSync(filePath);
+
+      // Criar instância do PDF e preparar assinatura
+      const pdfDoc = await PDFDocument.load(pdfBuffer);
+      const pdfBytes = await pdfDoc.save();
+
+      // Certificado P12
+      const p12Buffer = Buffer.from(certificadoInfos.p12Base64, 'base64');
+
+      // Criar assinatura
+      const signPdf = new SignPdf();
+      const signedPdf = signPdf.sign(pdfBytes, {
+        signer: new Pkcs12(p12Buffer, '1234'),
+      });
+
+      // Salvar o PDF assinado
+      const signedFilePath = filePath.replace('.pdf', `_signed.pdf`);
+      fs.writeFileSync(signedFilePath, signedPdf);
+
+      // Atualizar o documento no banco de dados
+      await this.prisma.document.update({
+        where: { id: documentId },
+        data: {
+          ValidSigned: true,
+        },
+      });
+
+      return {
+        documentId,
+        signedFilePath,
+      };
+    } catch (error) {
+      console.error('Erro ao criar assinatura:', error);
+      throw new InternalServerErrorException(
+        `Erro ao assinar documento: ${error.message}`,
+      );
+    }
+  }
+
+  smartSanitizeIdentifier(input: string): string {
+    if (!input) return '';
+
+    // Remove todos os caracteres não numéricos
+    const numericOnly = input.replace(/[^\d]/g, '');
+
+    // Se for exatamente 11 ou 14 dígitos numéricos
+    if (numericOnly.length === 11 || numericOnly.length === 14) {
+      return numericOnly;
+    }
+
+    // Para nomes de arquivos
+    const sanitized = input
+      .normalize('NFD') // Normaliza caracteres acentuados
+      .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+      .replace(/[^a-zA-Z0-9_\-\.]/g, '_') // Substitui caracteres inválidos
+      .replace(/\s+/g, '_') // Substitui múltiplos espaços
+      .toLowerCase(); // Converte para minúsculas
+
+    return sanitized;
   }
 }

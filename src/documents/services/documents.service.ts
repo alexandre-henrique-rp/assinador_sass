@@ -122,7 +122,6 @@ export class DocumentsService {
 
   async addManifestToPdf(document: any, originalPath: fs.PathOrFileDescriptor) {
     try {
-      console.log(document);
       // Load the original PDF asynchronously
       const pdfBytes = await fs.promises.readFile(String(originalPath));
       const pdfDoc = await PDFDocument.load(pdfBytes);
@@ -134,7 +133,7 @@ export class DocumentsService {
       const manifestPage = pdfDoc.addPage();
       const { height: manifestHeight } = manifestPage.getSize();
 
-      const UrlConsulta = `https://sisnato.com.br/validar/${document.id}`;
+      const UrlConsulta = `https://arinterface.com.br/validar/${document.id}`;
 
       // Add manifest content
       manifestPage.drawText('MANIFESTO DE', {
@@ -161,6 +160,21 @@ export class DocumentsService {
       // Obter dimensões da imagem
       const QrDims = QrImage.scale(0.25); // Reduzir tamanho da imagem (ajuste conforme necessário)
 
+      // caminho da logo
+      const LogoPath = path.join(process.cwd(), 'img', 'icp-brasil.png');
+      //retornar o binario
+      const LogoRead = fs.readFileSync(LogoPath);
+      //tranformar em buffer binario
+      const LogoBuffer = Buffer.from(LogoRead);
+
+      const IcpLogo = LogoBuffer;
+
+      // Incorporar a imagem ao PDF
+      const IcpImage = await pdfDoc.embedPng(IcpLogo);
+
+      // Obter dimensões da imagem
+      const IcpDims = IcpImage.scale(0.5); // Reduzir tamanho da imagem (ajuste conforme necessário)
+
       manifestPage.drawImage(QrImage, {
         x: 400, // Posição ajustada para a margem direita
         y: manifestHeight - QrDims.height - 50, // Posição ajustada para o topo
@@ -168,11 +182,11 @@ export class DocumentsService {
         height: QrDims.height,
       });
 
-      manifestPage.drawImage(QrImage, {
+      manifestPage.drawImage(IcpImage, {
         x: 100, // Posição ajustada para a margem direita
-        y: manifestHeight - QrDims.height - 50, // Posição ajustada para o topo
-        width: QrDims.width,
-        height: QrDims.height,
+        y: manifestHeight - IcpDims.height - 51, // Posição ajustada para o topo
+        width: IcpDims.width,
+        height: IcpDims.height,
       });
 
       manifestPage.drawText(`Código de validação: ${document.id}`, {
@@ -183,58 +197,66 @@ export class DocumentsService {
       });
 
       manifestPage.drawText(
-        'Documento assinado com o uso de Assinatura Avançada ICP Brasil,',
-        { x: 50, y: manifestHeight - 210, size: 9, font: helveticaFont },
+        'Documento assinado com o uso de Assinatura Avançada ICP Brasil, no Assinador Sisnato,',
+        { x: 50, y: manifestHeight - 210, size: 12, font: helveticaFont },
       );
 
-      manifestPage.drawText(
-        'no Assinador Sisnato, pelos seguintes signatários:',
-        { x: 50, y: manifestHeight - 225, size: 9, font: helveticaFont },
-      );
+      manifestPage.drawText('pelos seguintes signatários:', {
+        x: 50,
+        y: manifestHeight - 225,
+        size: 12,
+        font: helveticaFont,
+      });
 
       // Signatário details
       manifestPage.drawText(
-        `${document.client.name} - CPF: ${document.client.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') ?? 'NÃO INFORMADO'} - assinatura Avançada ICP Brasil`,
-        { x: 50, y: manifestHeight - 250, size: 9, font: helveticaFont },
+        `${document.client.name} - CPF: ${document.client.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') ?? 'NÃO INFORMADO'}`,
+        { x: 50, y: manifestHeight - 250, size: 14, font: helveticaFont },
       );
+      // Signatário details
+      manifestPage.drawText(`Assinatura Avançada ICP Brasil`, {
+        x: 50,
+        y: manifestHeight - 266,
+        size: 14,
+        font: helveticaFont,
+      });
 
       // Validation links
       manifestPage.drawText(
         'Para verificar as assinaturas, acesse o link direto de validação deste documento:',
-        { x: 50, y: manifestHeight - 275, size: 9, font: helveticaFont },
+        { x: 50, y: manifestHeight - 285, size: 12, font: helveticaFont },
       );
 
       manifestPage.drawText(`${UrlConsulta}`, {
         x: 80,
-        y: manifestHeight - 295,
-        size: 10,
+        y: manifestHeight - 305,
+        size: 13,
         color: rgb(0, 0, 1),
         font: helveticaFont,
       });
 
       manifestPage.drawText(
         'Ou acesse a consulta de documentos assinados disponível no link abaixo e informe',
-        { x: 50, y: manifestHeight - 315, size: 9, font: helveticaFont },
+        { x: 50, y: manifestHeight - 325, size: 12, font: helveticaFont },
       );
 
-      console.log(manifestHeight);
       manifestPage.drawText('o código de validação:', {
         x: 50,
-        y: manifestHeight - 330,
-        size: 9,
+        y: manifestHeight - 340,
+        size: 12,
         font: helveticaFont,
       });
 
-      manifestPage.drawText('https://sisnato.com.br/validar', {
-        x: 150,
-        y: manifestHeight - 360,
-        size: 10,
+      manifestPage.drawText('https://arinterface.com.br/validar', {
+        x: 195,
+        y: manifestHeight - 375,
+        size: 14,
         color: rgb(0, 0, 1),
         font: helveticaFont,
       });
 
       // Save the modified PDF
-      const manifestFilename = `manifesto_${document.originalName}`;
+      const manifestFilename = `ass_${document.originalName}`;
       const manifestPath = path.join(
         process.cwd(),
         'uploads',
@@ -283,8 +305,14 @@ export class DocumentsService {
       });
 
       // Ensure directory exists
-      await fs.promises.mkdir(path.dirname(manifestPath), { recursive: true });
+      await fs.promises.mkdir(path.dirname(manifestPath), {
+        recursive: true,
+      });
 
+      await this.prisma.document.update({
+        where: { id: document.id },
+        data: { storageManifest: `uploads/manifests/${manifestFilename}` },
+      });
       // Write the modified PDF
       const pdfBytesModified = await pdfDoc.save();
       await fs.promises.writeFile(manifestPath, pdfBytesModified);
@@ -336,12 +364,15 @@ export class DocumentsService {
     const req = await this.prisma.document.findFirst({
       where: { originalName: { contains: fileName } },
     });
+    if (!req) {
+      return false;
+    }
     return req.isSigned;
   }
 
-  async DownloadFile(fileName: string) {
+  async DownloadFile(docId: string) {
     const req = await this.prisma.document.findFirst({
-      where: { originalName: { contains: fileName } },
+      where: { id: docId },
       include: {
         client: true,
         signatures: true,
@@ -361,6 +392,13 @@ export class DocumentsService {
     const req = await this.prisma.document.findFirst({
       where: { originalName: fileName },
     });
+    if (!req) {
+      throw new NotFoundException('Documento nao encontrado');
+    }
+    if (req.isSigned) {
+      const filePath = path.join(process.cwd(), req.storageManifest);
+      return filePath;
+    }
     const filePath = path.join(process.cwd(), req.storagePath);
     return filePath;
   }

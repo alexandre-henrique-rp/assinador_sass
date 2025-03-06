@@ -54,14 +54,8 @@ export class DocumentsController {
 
   @Get('download/:fileName')
   async download(@Param('fileName') fileName: string, @Res() res: Response) {
-    const Signer = this.documentsService.IsSing(fileName);
-    if (!Signer) {
-      const OriginalPath = await this.documentsService.ViewFile(fileName);
-      return res.download(OriginalPath);
-    }
-    const BufferFile = await this.documentsService.DownloadFile(fileName);
-    const buffer = Buffer.from(BufferFile);
-    return res.send(buffer);
+    const OriginalPath = await this.documentsService.ViewFile(fileName);
+    return res.download(OriginalPath);
   }
 
   @Get('view/:fileName')
