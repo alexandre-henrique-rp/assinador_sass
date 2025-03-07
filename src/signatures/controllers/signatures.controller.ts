@@ -29,7 +29,11 @@ export class SignaturesController {
     //   createSignatureDto.documentId,
     //   createSignatureDto,
     // );
-    // await this.documentsService.DownloadFile(createSignatureDto.documentId);
+    await this.signaturesService.createAdvancedSignature(
+      createSignatureDto.documentId,
+      createSignatureDto,
+    );
+    await this.documentsService.DownloadFile(createSignatureDto.documentId);
     await this.signaturesService.createSignatureCertificate(
       createSignatureDto.documentId,
       createSignatureDto.certificateId,

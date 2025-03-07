@@ -770,12 +770,15 @@ export class CertificatesService {
       const cert = forge.pki.certificateFromPem(cleanCertificatePem);
       const privateKey = forge.pki.privateKeyFromPem(cleanPrivateKeyPem);
 
-      // Cria um novo PFX (PKCS#12)
-      const pfx = forge.pkcs12.toPkcs12Asn1(privateKey, [cert], password, {
-        algorithm: 'aes256',
-        prfAlgorithm: 'SHA256', // força o uso de SHA‑256
-        count: 200000,
-      });
+      // // Cria um novo PFX (PKCS#12)
+      // const pfx = forge.pkcs12.toPkcs12Asn1(privateKey, [cert], password, {
+      //   algorithm: 'aes256',
+      //   prfAlgorithm: 'SHA256', // força o uso de SHA‑256
+      //   count: 200000,
+      // });
+
+      // Cria um novo p12 (PKCS#12)
+      const pfx = forge.pkcs12.toPkcs12(privateKey, cert);
 
       // Converte para Buffer (DER)
       const pfxBuffer = Buffer.from(forge.asn1.toDer(pfx).getBytes(), 'binary');
