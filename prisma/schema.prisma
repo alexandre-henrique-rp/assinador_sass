@@ -46,6 +46,7 @@ model Certificate {
   clientId        String? // Agora obrigatório
   pathCertificate String?
   pfxPassword     String?
+  csr             String
   isCA            Boolean  @default(false)
   isDownloaded    Boolean  @default(false)
   createdAt       DateTime @default(now())

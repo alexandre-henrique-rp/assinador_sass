@@ -14,7 +14,7 @@ import { DocumentsService } from '../../documents/services/documents.service';
 import { CreateSignatureDto } from '../dto/create-signature.dto';
 import { SignatureType } from '../entities/signature.entity';
 import { Buffer } from 'node:buffer';
-import { exec, execSync } from 'node:child_process';
+import { execSync } from 'node:child_process';
 
 @Injectable()
 export class SignaturesService {
@@ -170,13 +170,18 @@ export class SignaturesService {
         where: { id: certificateId },
         include: { client: true },
       });
+      const certificadoAc = await this.prisma.certificate.findFirst({
+        where: { subject: 'AC Interface', isValid: true, clientId: null },
+      });
 
       if (!certificadoInfos) {
         throw new NotFoundException('Certificado não encontrado');
       }
 
       // Simulação da chave privada vinda do banco
-      const privateKey = certificadoInfos.privateKey;
+      const privateKey1 = certificadoInfos.privateKey;
+      const CertificatePem = certificadoInfos.certificatePem;
+      const CertificateAcPem = certificadoAc.certificatePem;
 
       // Caminhos dos arquivos
       const pdfPath = path.join(process.cwd(), documento.storageManifest);
@@ -184,82 +189,58 @@ export class SignaturesService {
         process.cwd(),
         documento.storageManifest.replace('.pdf', '_signed.pdf'),
       );
-      const signaturePath = signedPdfPath.replace('.pdf', '.bin'); // Arquivo da assinatura
-      const privateKeyPath = path.join(process.cwd(), 'private_key.pem');
+      const privateKeyPath = path.join(
+        process.cwd(),
+        'uploads',
+        'certificados',
+        'private_key.pem',
+      );
+      const CertificateP12Path = path.join(
+        process.cwd(),
+        'uploads',
+        'certificados',
+        'certificado.p12',
+      );
+      const CertificateCrtPath = path.join(
+        process.cwd(),
+        'uploads',
+        'certificados',
+        'certificado.pem',
+      );
+      const CertificateAcCrtPath = path.join(
+        process.cwd(),
+        'uploads',
+        'certificados',
+        'certificadoAc.pem',
+      );
 
       // Salva a chave privada temporariamente em um arquivo
-      fs.writeFileSync(privateKeyPath, privateKey);
-
-      // Lê o PDF original
-      const pdfBuffer = fs.readFileSync(pdfPath);
-      fs.writeFileSync(signedPdfPath, pdfBuffer); // Cria cópia para assinar
+      fs.writeFileSync(privateKeyPath, privateKey1);
+      fs.writeFileSync(CertificateCrtPath, CertificatePem);
+      fs.writeFileSync(CertificateAcCrtPath, CertificateAcPem);
 
       try {
         // Executa o OpenSSL para assinar o documento
         execSync(
-          `openssl dgst -sha256 -sign ${privateKeyPath} -out ${signaturePath} ${signedPdfPath}`,
+          `openssl pkcs12 -export -out ${CertificateP12Path} -inkey ${privateKeyPath} -in ${CertificateCrtPath} -certfile ${CertificateAcCrtPath} -passin pass:1234`,
         );
 
-        console.log('✅ Assinatura criada com sucesso:', signaturePath);
+        console.log('✅ Certificado p12 criado:', CertificateP12Path);
+      } catch (error) {
+        console.error('❌ Erro ao criar certificado p12:', error);
+        throw new Error(`Erro ao criar certificado p12: ${error.message}`);
+      }
+
+      // Realiza a assinatura
+      try {
+        execSync(
+          `node /home/ti001/Documentos/projetos/ass_module/signpdf.js ${CertificateP12Path} ${pdfPath} ${signedPdfPath}`,
+        );
+        console.log('✅ PDF assinado e salvo como:', signedPdfPath);
       } catch (error) {
         console.error('❌ Erro ao assinar o PDF:', error);
         throw new Error(`Erro ao assinar o PDF: ${error.message}`);
-      } finally {
-        // Remove o arquivo temporário da chave privada por segurança
-        fs.unlinkSync(privateKeyPath);
       }
-
-      // exec('cat /etc/os-release', (error, stdout) => {
-      //   if (error) {
-      //     console.error('Erro ao executar cat /etc/os-release:', error);
-      //     throw new InternalServerErrorException(
-      //       `Erro ao executar cat /etc/os-release: ${error.message}`,
-      //     );
-      //     return;
-      //   }
-
-      //   const osRelease = stdout.toString();
-      //   if (osRelease.includes('ID=ubuntu')) {
-      //     exec(`sudo apt update && sudo apt install poppler-utils`, (error) => {
-      //       if (error) {
-      //         console.error('Erro ao instalar poppler-utils:', error);
-      //         throw new InternalServerErrorException(
-      //           `Erro ao instalar poppler-utils: ${error.message}`,
-      //         );
-      //       }
-      //     });
-      //   } else if (osRelease.includes('ID=manjaro')) {
-      //     exec(`sudo pacman -Syu && sudo pacman -S poppler-utils`, (error) => {
-      //       if (error) {
-      //         console.error('Erro ao instalar poppler-utils:', error);
-      //         throw new InternalServerErrorException(
-      //           `Erro ao instalar poppler-utils: ${error.message}`,
-      //         );
-      //       }
-      //     });
-      //   } else {
-      //     exec(`sudo apt update && sudo apt install poppler-utils`, (error) => {
-      //       if (error) {
-      //         console.error('Erro ao instalar poppler-utils:', error);
-      //         throw new InternalServerErrorException(
-      //           `Erro ao instalar poppler-utils: ${error.message}`,
-      //         );
-      //       }
-      //     });
-      //   }
-      // });
-
-      exec(
-        `pdfsig -add signature=${signedPdfPath.replace('.pdf', '.bin')} ${signedPdfPath} ${signedPdfPath.replace('_signed.pdf', '_ok.pdf')}`,
-        (error) => {
-          if (error) {
-            console.error('Erro ao assinar o PDF:', error);
-            throw new InternalServerErrorException(
-              `Erro ao assinar o PDF: ${error.message}`,
-            );
-          }
-        },
-      );
 
       // Atualize o banco de dados
       await this.prisma.document.update({
@@ -284,10 +265,45 @@ export class SignaturesService {
       };
     } catch (error) {
       console.error('Erro ao criar assinatura:', error);
-      throw new InternalServerErrorException(
-        `Erro ao assinar documento: ${error.message}`,
-      );
+      throw new InternalServerErrorException(`Erro: ${error.message}`);
     }
+  }
+
+  createSignaturePlaceholder(length: number): string {
+    return '0'.repeat(length);
+  }
+
+  private findPlaceholderPosition(pdf: Buffer, placeholder: string): number {
+    const placeholderHex = Buffer.from(placeholder).toString('hex');
+    const pdfHex = pdf.toString('hex');
+    const position = pdfHex.indexOf(placeholderHex) / 2;
+
+    if (position === -1) {
+      throw new Error('Placeholder não encontrado no PDF');
+    }
+
+    return position;
+  }
+
+  extractCertInfo(cert: forge.pki.Certificate) {
+    const subject = cert.subject.attributes;
+
+    const findAttribute = (shortName: string) => {
+      const attr = subject.find(
+        (attr: { shortName: string }) => attr.shortName === shortName,
+      );
+      return attr ? attr.value : undefined;
+    };
+
+    return {
+      commonName: findAttribute('CN') || 'Desconhecido',
+      organization: findAttribute('O'),
+      organizationalUnit: findAttribute('OU'),
+      location: findAttribute('L'),
+      state: findAttribute('ST'),
+      country: findAttribute('C'),
+      email: findAttribute('E'),
+    };
   }
 
   smartSanitizeIdentifier(input: string): string {

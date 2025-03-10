@@ -1,13 +1,21 @@
 import { HttpException, Injectable, NotFoundException } from '@nestjs/common';
 import { plainToClass } from 'class-transformer';
-import { promises as fs } from 'fs';
+import {
+  existsSync,
+  promises as fs,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'fs';
 import * as forge from 'node-forge';
 import * as path from 'path';
+import * as crypto from 'crypto';
 import { ClientsService } from 'src/clients/services/clients.service';
 import { ErrorEntity } from '../../error.entity';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCertificateDto } from '../dto/create-certificate.dto';
 import { CertificateEntity } from '../entities/certificate.entity';
+import { execSync } from 'child_process';
 
 @Injectable()
 export class CertificatesService {
@@ -137,135 +145,77 @@ export class CertificatesService {
         return plainToClass(CertificateEntity, existingCA);
       }
 
-      // Gera um par de chaves RSA para a AC
-      const keys = forge.pki.rsa.generateKeyPair(2048);
-      const privateKeyPem = forge.pki.privateKeyToPem(keys.privateKey, 'RSA');
-      const publicKeyPem = forge.pki.publicKeyToPem(keys.publicKey, 'RSA');
+      const dirPath = path.join(process.cwd(), 'uploads', 'certificados', 'ca');
+      if (!existsSync(dirPath)) {
+        mkdirSync(dirPath, { recursive: true });
+      }
 
-      // Cria um certificado X.509 para a AC
-      const cert = forge.pki.createCertificate();
-      cert.publicKey = keys.publicKey;
+      // Gerar chaves privada e pública
+      const caKeyPair = crypto.generateKeyPairSync('rsa', {
+        modulusLength: 4096,
+        publicKeyEncoding: {
+          type: 'spki',
+          format: 'pem',
+        },
+        privateKeyEncoding: {
+          type: 'pkcs8',
+          format: 'pem',
+        },
+      });
 
-      // Gera o número serial no formato solicitado: 521C + timestamp
-      const serialNumber = `521C${Date.now().toString(16)}`;
-      cert.serialNumber = serialNumber;
+      // Salvar as chaves
+      const privateKeyPath = `${dirPath}/ca_private_key.pem`;
+      const publicKeyPath = `${dirPath}/ca_public_key.pem`;
 
-      // Define os atributos do certificado
+      const privateKeyPem = caKeyPair.privateKey;
+      writeFileSync(privateKeyPath, caKeyPair.privateKey, 'utf8');
+      console.log("Chave privada salva em 'ca_private_key.pem'");
+
+      const publicKeyPem = caKeyPair.publicKey;
+      writeFileSync(publicKeyPath, caKeyPair.publicKey, 'utf8');
+      console.log("Chave pública salva em 'ca_public_key.pem'");
+
+      const nome = this.AcName;
+      const organizacao = this.AcRazao;
+      const unidade = this.AcTypeCd;
+
+      // Criar um certificado CA auto assinado usando OpenSSL
+      const certPath = `${dirPath}/ca_cert.pem`;
+      const subject = `/C=BR/O=${organizacao}/OU=${unidade}/CN=${nome}`;
+
+      try {
+        execSync(
+          `openssl req -new -x509 -key ${privateKeyPath} -out ${certPath} -days 3650 -subj "${subject}"`,
+          { stdio: 'inherit' },
+        );
+        console.log('Certificado criado com sucesso');
+      } catch (error) {
+        console.log('Erro ao criar o certificado: ' + error.message);
+        throw new Error('Erro ao criar o certificado: ' + error.message);
+      }
+
+      const cert = readFileSync(certPath, 'utf8');
+
       const now = new Date();
-      const validityYears = 10;
-      cert.validity.notBefore = now;
-      cert.validity.notAfter = new Date(
-        now.getFullYear() + validityYears,
-        now.getMonth(),
-        now.getDate(),
-      );
-
-      const attrs = [
-        { name: 'commonName', value: this.AcRazao },
-        { name: 'countryName', value: this.AcCountry },
-        { name: 'organizationName', value: this.AcRegule },
-        { name: 'organizationalUnitName', value: this.AcName },
-      ];
-      console.log(
-        '🚀 ~ CertificatesService ~ createCACertificate ~ attrs:',
-        attrs,
-      );
-
-      cert.setSubject(attrs);
-      cert.setIssuer(attrs); // Auto-assinado
-
-      // Use um tipo mais genérico para as extensões
-      // Aqui estamos usando 'as any' para contornar as verificações de tipo do TypeScript
-      const extensions: any[] = [
-        {
-          name: 'basicConstraints',
-          critical: true,
-          cA: true,
-          pathLenConstraint: null, // Restrições de Comprimento de Caminho = Nenhum(a)
-        },
-        {
-          name: 'keyUsage',
-          critical: true,
-          keyCertSign: true, // Assinatura de Certificado
-          cRLSign: true, // Assinatura da lista de certificados revogados
-          digitalSignature: true, // Assinatura offline
-        },
-        {
-          name: 'subjectKeyIdentifier',
-        },
-      ];
-
-      // Simplifique a adição da política usando a API nativa do forge
-      // e use 'as any' para ignorar as restrições de tipo
-      extensions.push({
-        id: '2.5.29.32', // OID para certificatePolicies
-        name: 'certificatePolicies',
-        critical: false,
-        value: forge.asn1
-          .toDer(
-            forge.asn1.create(
-              forge.asn1.Class.UNIVERSAL,
-              forge.asn1.Type.SEQUENCE,
-              true,
-              [
-                forge.asn1.create(
-                  forge.asn1.Class.UNIVERSAL,
-                  forge.asn1.Type.SEQUENCE,
-                  true,
-                  [
-                    forge.asn1.create(
-                      forge.asn1.Class.UNIVERSAL,
-                      forge.asn1.Type.OID,
-                      false,
-                      forge.asn1.oidToDer('2.16.76.1.2.1.38').getBytes(),
-                    ),
-                    forge.asn1.create(
-                      forge.asn1.Class.UNIVERSAL,
-                      forge.asn1.Type.SEQUENCE,
-                      true,
-                      [
-                        forge.asn1.create(
-                          forge.asn1.Class.UNIVERSAL,
-                          forge.asn1.Type.IA5STRING,
-                          false,
-                          forge.util.encodeUtf8(
-                            'https://arinterface.com.br/doc/dpn-ar.pdf',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          )
-          .getBytes(),
-      } as any);
-
-      // Aplique as extensões ao certificado
-      cert.setExtensions(extensions);
-
-      // Assina o certificado com a chave privada da AC
-      cert.sign(keys.privateKey, forge.md.sha256.create());
-
-      // Converte o certificado para PEM
-      const certificatePem = forge.pki.certificateToPem(cert);
+      const validate = new Date(now.getTime() + 3650 * 60 * 60 * 24 * 365);
 
       // Salva o certificado da AC no banco de dados
       const caCertificateEntity = this.prisma.certificate.create({
         data: {
           subject: 'AC Interface',
-          serialNumber: serialNumber,
+          serialNumber: '',
           publicKey: publicKeyPem,
           privateKey: privateKeyPem,
           issuedAt: now,
-          validUntil: cert.validity.notAfter,
+          validUntil: validate,
           isValid: true,
           issuer: 'AC Interface',
-          certificatePem: certificatePem,
+          certificatePem: cert,
           isCA: true,
+          csr: '',
         },
       });
+
       console.log('Certificado AC criado com sucesso');
       return plainToClass(CertificateEntity, await caCertificateEntity);
     } catch (error) {
@@ -281,24 +231,6 @@ export class CertificatesService {
   }
 
   async createClientCertificate(createCertificateDto: CreateCertificateDto) {
-    let AcCertificate = await this.prisma.certificate.findFirst({
-      where: { isCA: true, isValid: true },
-    });
-
-    if (!AcCertificate || AcCertificate.validUntil <= new Date()) {
-      if (AcCertificate) {
-        await this.invalidateCertificate(AcCertificate.id);
-      }
-      const newCaCertificate = await this.createCACertificate();
-      AcCertificate = await this.prisma.certificate.findUnique({
-        where: { id: newCaCertificate.id },
-      });
-
-      if (!AcCertificate) {
-        throw new Error('Falha ao recuperar o novo certificado da AC.');
-      }
-    }
-
     try {
       const client = await this.clientsService.findByCpf(
         createCertificateDto.cpf.replace(/\D/g, ''),
@@ -308,219 +240,116 @@ export class CertificatesService {
         await this.invalidateClientCertificates(client.id);
       }
 
-      // Gera um par de chaves RSA para o cliente
-      const keys = forge.pki.rsa.generateKeyPair(2048);
-      const privateKeyPem = forge.pki.privateKeyToPem(keys.privateKey, 'RSA');
-      const publicKeyPem = forge.pki.publicKeyToPem(keys.publicKey, 'RSA');
+      const dirPath = path.join(process.cwd(), 'uploads', 'certificados');
+      const caPath = path.join(process.cwd(), 'uploads', 'certificados', 'ca');
+      const clientDir = `${dirPath}/${this.limparTexto2(client.name)}${client.cpf}`;
 
-      // Cria um certificado X.509 para o cliente
-      const cert = forge.pki.createCertificate();
-      cert.publicKey = keys.publicKey;
+      // Gerar chave privada para o cliente (sem senha)
+      const clientKeyPath = `${clientDir}/private_key.pem`;
+      const publicKeyPath = `${clientDir}/public_key.pem`;
+      const csrPath = `${clientDir}/${this.limparTexto2(client.name)}.csr`;
+      const certPath = `${clientDir}/${this.limparTexto2(client.name)}.pem`;
+      const pfxPath = `${clientDir}/${this.limparTexto2(client.name)}-${client.cpf}.pfx`;
 
-      const serialNumber = `521C${Date.now().toString(16)}`;
-      cert.serialNumber = serialNumber;
-
-      const now = new Date();
-      const validityDays = createCertificateDto.validityDays
-        ? parseInt(createCertificateDto.validityDays)
-        : 365;
-      cert.validity.notBefore = now;
-      cert.validity.notAfter = new Date(
-        now.getTime() + validityDays * 24 * 60 * 60 * 1000,
-      );
-
-      cert.setSubject([
-        { name: 'commonName', value: createCertificateDto.name },
-        { name: 'countryName', value: this.AcCountry },
-        { shortName: 'ST', value: this.AcState },
-        { name: 'localityName', value: this.AcCity },
-        { name: 'organizationName', value: this.AcRegule },
-        {
-          name: 'organizationalUnitName',
-          value: createCertificateDto.cpf.replace(/\D/g, ''),
+      const clientKeyPair = crypto.generateKeyPairSync('rsa', {
+        modulusLength: 4096,
+        publicKeyEncoding: {
+          type: 'spki',
+          format: 'pem',
         },
-        { name: 'organizationalUnitName', value: this.AcTypeCd },
-        { name: 'organizationalUnitName', value: this.AcType },
-      ]);
+        privateKeyEncoding: {
+          type: 'pkcs8',
+          format: 'pem',
+        },
+      });
 
-      // Lê o certificado da AC
-      const caCert = forge.pki.certificateFromPem(AcCertificate.certificatePem);
-
-      // 🔹 Garante que a chave privada da AC está no formato correto
-
-      let caPrivateKey: any;
-      if (AcCertificate.privateKey.includes('BEGIN RSA PRIVATE KEY')) {
-        const rsaPrivateKey = forge.pki.privateKeyFromPem(
-          AcCertificate.privateKey,
-        );
-        caPrivateKey = forge.pki.privateKeyToPem(rsaPrivateKey, 8); // Converte para PKCS#8
-      } else {
-        caPrivateKey = forge.pki.privateKeyFromPem(AcCertificate.privateKey);
+      if (!existsSync(clientDir)) {
+        mkdirSync(clientDir);
       }
 
-      cert.setIssuer(caCert.subject.attributes);
+      const clientPrivateKey = clientKeyPair.privateKey;
+      writeFileSync(clientKeyPath, clientKeyPair.privateKey, 'utf8');
+      console.log(`Chave privada do cliente salva em '${clientKeyPath}'`);
 
-      cert.setExtensions([
-        { name: 'basicConstraints', cA: false },
-        {
-          name: 'keyUsage',
-          digitalSignature: true,
-          nonRepudiation: true,
-          keyEncipherment: true,
-        },
-        // extKeyUsage com apenas clientAuth (sem emailProtection)
-        { name: 'extKeyUsage', clientAuth: true },
-        {
-          name: 'subjectAltName',
-          altNames: [
-            // E-mail no formato RFC822
-            { type: 1, value: client.email },
-            // Other Name com OID 2.16.76.1.3.1
-            {
-              type: 0,
-              value: {
-                id: '2.16.76.1.3.1',
-                value: this.formatBrazilianOtherName(this.AcRegule),
-              },
-            },
-            // Other Name com OID 2.16.76.1.3.6
-            {
-              type: 0,
-              value: {
-                id: '2.16.76.1.3.6',
-                value: this.formatBrazilianOtherName(this.AcRazao),
-              },
-            },
-            // Other Name com OID 2.16.76.1.3.5
-            {
-              type: 0,
-              value: {
-                id: '2.16.76.1.3.5',
-                value: this.formatBrazilianOtherName(this.AcName),
-              },
-            },
-          ],
-        },
-        { name: 'subjectKeyIdentifier' },
-        {
-          name: 'authorityKeyIdentifier',
-          authorityCertIssuer: true,
-          serialNumber: caCert.serialNumber,
-        },
-        {
-          name: 'nsComment',
-          value: `CPF: ${createCertificateDto.cpf}, Nascimento: ${createCertificateDto.birthDate}`,
-        },
-        {
-          id: '2.5.29.32',
-          name: 'certificatePolicies',
-          critical: false,
-          value: forge.asn1
-            .toDer(
-              forge.asn1.create(
-                forge.asn1.Class.UNIVERSAL,
-                forge.asn1.Type.SEQUENCE,
-                true,
-                [
-                  forge.asn1.create(
-                    forge.asn1.Class.UNIVERSAL,
-                    forge.asn1.Type.SEQUENCE,
-                    true,
-                    [
-                      forge.asn1.create(
-                        forge.asn1.Class.UNIVERSAL,
-                        forge.asn1.Type.OID,
-                        false,
-                        forge.asn1.oidToDer('2.16.76.1.2.1.38').getBytes(),
-                      ),
-                      forge.asn1.create(
-                        forge.asn1.Class.UNIVERSAL,
-                        forge.asn1.Type.SEQUENCE,
-                        true,
-                        [
-                          forge.asn1.create(
-                            forge.asn1.Class.UNIVERSAL,
-                            forge.asn1.Type.IA5STRING,
-                            false,
-                            forge.util.encodeUtf8(
-                              'https://arinterface.com.br/doc/dpn-ar.pdf',
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            )
-            .getBytes(),
-        },
-        // Se necessário, pode incluir extKeyUsage adicional com outros OIDs:
-        { name: 'extKeyUsage', oids: ['1.3.6.1.4.1.311.20.2.2'] },
-        // Extensão Authority Information Access (AIA) – codificada manualmente em DER
-        {
-          id: '1.3.6.1.5.5.7.1.1',
-          name: 'authorityInfoAccess',
-          critical: false,
-          value: forge.asn1
-            .toDer(
-              forge.asn1.create(
-                forge.asn1.Class.UNIVERSAL,
-                forge.asn1.Type.SEQUENCE,
-                true,
-                [
-                  // AccessDescription para CA Issuers
-                  forge.asn1.create(
-                    forge.asn1.Class.UNIVERSAL,
-                    forge.asn1.Type.SEQUENCE,
-                    true,
-                    [
-                      // OID para CA Issuers: 1.3.6.1.5.5.7.48.2
-                      forge.asn1.create(
-                        forge.asn1.Class.UNIVERSAL,
-                        forge.asn1.Type.OID,
-                        false,
-                        forge.asn1.oidToDer('1.3.6.1.5.5.7.48.2').getBytes(),
-                      ),
-                      // accessLocation como URI (tipo CONTEXT_SPECIFIC, tag 6)
-                      forge.asn1.create(
-                        forge.asn1.Class.CONTEXT_SPECIFIC,
-                        6,
-                        false,
-                        forge.util.encodeUtf8(
-                          'https://arinterface.com.br/doc/AC_Interface_v5.p7b',
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            )
-            .getBytes(),
-        },
-      ]);
+      const clientPublicKey = clientKeyPair.publicKey;
+      writeFileSync(publicKeyPath, clientKeyPair.publicKey, 'utf8');
+      console.log(`Chave pública do cliente salva em '${publicKeyPath}'`);
 
-      // Assina o certificado com a chave privada da AC (corrigida)
-      cert.sign(
-        forge.pki.privateKeyFromPem(caPrivateKey),
-        forge.md.sha256.create(),
+      const serialNumber = `0x521C${Date.now().toString(16)}`;
+
+      const nome = this.limparTexto2(client.name);
+      const cpf = client.cpf;
+      const organizacao = this.AcRazao;
+      const unidade = this.AcTypeCd;
+      const unidade1 = 'Certificado Digital';
+      const CA = this.AcName;
+      const password = '1234';
+      const Days = 365;
+      const Serial = serialNumber;
+
+      // Criar CSR com OpenSSL, incluindo o CPF no CN
+      const subject = `/C=BR/O=${organizacao}/OU=${unidade}/OU=${unidade1}/OU=${CA}/CN=${nome}:${cpf}`;
+
+      try {
+        execSync(
+          `openssl req -new -key ${clientKeyPath} -out ${csrPath} -subj "${subject}"`,
+          { stdio: 'inherit' },
+        );
+        console.log(`CSR gerado em '${csrPath}'`);
+      } catch (error) {
+        console.log('Erro ao gerar o CSR: ' + error.message);
+        throw new Error('Erro ao gerar o CSR: ' + error.message);
+      }
+
+      const csr = readFileSync(csrPath, 'utf8');
+
+      // Assinar CSR com a CA
+      try {
+        execSync(
+          `openssl x509 -req -in ${csrPath} -CA ${caPath}/ca_cert.pem -CAkey ${caPath}/ca_private_key.pem -out ${certPath} -days ${Days} -sha256 -set_serial ${Serial}`,
+          { stdio: 'inherit' },
+        );
+        console.log(`Certificado assinado gerado em '${certPath}'`);
+      } catch (error) {
+        console.log('Erro ao assinar o CSR: ' + error.message);
+        throw new Error('Erro ao assinar o CSR: ' + error.message);
+      }
+
+      const cert = readFileSync(certPath, 'utf8');
+
+      // Gerar o arquivo PFX (PKCS#12)
+      try {
+        execSync(
+          `openssl pkcs12 -export -out ${pfxPath} -inkey ${clientKeyPath} -in ${certPath} -certfile ${caPath}/ca_cert.pem -passout pass:${password} `,
+          { stdio: 'inherit' },
+        );
+        console.log(`Arquivo PFX gerado em '${pfxPath}'`);
+      } catch (error) {
+        console.log('Erro ao gerar o PFX: ' + error.message);
+        throw new Error('Erro ao gerar o PFX: ' + error.message);
+      }
+
+      const now = new Date();
+      const expirationDate = new Date(
+        now.getTime() + 365 * 24 * 60 * 60 * 1000,
       );
-
-      const certificatePem = forge.pki.certificateToPem(cert, 32);
 
       const certificateEntity = await this.prisma.certificate.create({
         data: {
           subject: createCertificateDto.name,
           serialNumber: serialNumber,
-          publicKey: publicKeyPem,
-          privateKey: privateKeyPem,
+          publicKey: clientPublicKey,
+          privateKey: clientPrivateKey,
           issuedAt: now,
-          validUntil: cert.validity.notAfter,
+          validUntil: expirationDate,
           isValid: true,
-          issuer: AcCertificate.subject,
-          certificatePem: certificatePem,
+          issuer: 'AC Interface',
+          certificatePem: cert,
           clientId: client.id,
           isCA: false,
+          pathCertificate: `uploads/certificados${this.limparTexto2(client.name)}:${client.cpf}.pfx`,
+          csr: csr,
+          pfxPassword: password,
         },
       });
 
@@ -534,6 +363,15 @@ export class CertificatesService {
       );
       throw new HttpException({ message: error.message }, 400);
     }
+  }
+
+  limparTexto2(texto: string): string {
+    return texto
+      .normalize('NFD') // Normaliza para decompor caracteres acentuados
+      .replace(/[\u0300-\u036f]/g, '') // Remove os acentos
+      .replace(/[^a-zA-Z0-9\s]/g, '') // Remove caracteres especiais
+      .replace(/\s+/g, '_') // Remove espaços em excesso
+      .toUpperCase(); // Converte para maiúsculas
   }
 
   // Método auxiliar para formatar as informações brasileiras no formato correto para OtherName
@@ -760,6 +598,7 @@ export class CertificatesService {
           `Certificado válido para o cliente ${clienteId} não encontrado.`,
         );
       }
+
       //Pegando os dados do cliente
       const client = await this.clientsService.findOne(clienteId);
 
@@ -771,14 +610,14 @@ export class CertificatesService {
       const privateKey = forge.pki.privateKeyFromPem(cleanPrivateKeyPem);
 
       // // Cria um novo PFX (PKCS#12)
-      // const pfx = forge.pkcs12.toPkcs12Asn1(privateKey, [cert], password, {
-      //   algorithm: 'aes256',
-      //   prfAlgorithm: 'SHA256', // força o uso de SHA‑256
-      //   count: 200000,
-      // });
+      const pfx = forge.pkcs12.toPkcs12Asn1(privateKey, [cert], password, {
+        algorithm: 'aes256',
+        prfAlgorithm: 'SHA256', // força o uso de SHA‑256
+        count: 200000,
+      });
 
       // Cria um novo p12 (PKCS#12)
-      const pfx = forge.pkcs12.toPkcs12(privateKey, cert);
+      // const pfx = forge.pkcs12.toPkcs12(privateKey, cert);
 
       // Converte para Buffer (DER)
       const pfxBuffer = Buffer.from(forge.asn1.toDer(pfx).getBytes(), 'binary');
