@@ -6,7 +6,12 @@ export class DocumentFilterDto {
   @IsNotEmpty()
   @IsString()
   cpf: string;
-  
+
+  @ApiProperty({ example: 'a003e132-d6eb-45e6-bf23-c4b2d1a4b4e5' })
+  @IsNotEmpty()
+  @IsString()
+  admId: string;
+
   @ApiProperty({ required: false, example: 'pdf' })
   @IsOptional()
   @IsString()

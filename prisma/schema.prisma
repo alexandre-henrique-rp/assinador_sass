@@ -51,8 +51,6 @@ model Certificate {
   isDownloaded    Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-
-  @@unique([subject, serialNumber])
 }
 
 model Document {
@@ -76,8 +74,6 @@ model Document {
   atualName       String      @unique
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
-
-  @@unique([clientId, hash])
 }
 
 model Signature {
@@ -92,6 +88,4 @@ model Signature {
   signatureData String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-
-  @@unique([signerId, documentId])
 }

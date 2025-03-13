@@ -6,8 +6,6 @@ import {
 } from '@nestjs/common';
 import * as forge from 'node-forge';
 import * as crypto from 'crypto';
-import * as fs from 'fs';
-import * as path from 'path';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ClientsService } from '../../clients/services/clients.service';
 import { DocumentsService } from '../../documents/services/documents.service';
@@ -15,6 +13,14 @@ import { CreateSignatureDto } from '../dto/create-signature.dto';
 import { SignatureType } from '../entities/signature.entity';
 import { Buffer } from 'node:buffer';
 import { execSync } from 'node:child_process';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { dirname, join } from 'node:path';
 
 @Injectable()
 export class SignaturesService {
@@ -62,14 +68,16 @@ export class SignaturesService {
     }
 
     try {
-      const filePath = path.join(process.cwd(), document.storagePath);
-      const fileBuffer = fs.readFileSync(filePath);
+      const filePath = join(process.cwd(), document.storagePath);
+      const fileBuffer = readFileSync(filePath);
       const timestamp = new Date().toISOString();
 
       const signatureData = crypto
         .createHash('sha256')
         .update(Buffer.concat([fileBuffer, Buffer.from(timestamp)]))
         .digest('hex');
+
+      await this.documentsService.getDocumentWithManifest(documentId);
 
       const signature = await this.prisma.signature.create({
         data: {
@@ -120,8 +128,8 @@ export class SignaturesService {
       );
     }
 
-    const filePath = path.join(process.cwd(), document.storagePath);
-    const fileBuffer = fs.readFileSync(filePath);
+    const filePath = join(process.cwd(), document.storagePath);
+    const fileBuffer = readFileSync(filePath);
     const documentHash = crypto
       .createHash('sha256')
       .update(fileBuffer)
@@ -158,11 +166,11 @@ export class SignaturesService {
       });
 
       if (!documento) {
-        throw new NotFoundException('Documento não encontrado');
+        throw new Error('Documento não encontrado');
       }
 
       if (documento.ValidSigned) {
-        throw new NotFoundException('Documento já assinado');
+        throw new Error('Documento já assinado');
       }
 
       // Buscar informações do certificado
@@ -170,98 +178,90 @@ export class SignaturesService {
         where: { id: certificateId },
         include: { client: true },
       });
-      const certificadoAc = await this.prisma.certificate.findFirst({
-        where: { subject: 'AC Interface', isValid: true, clientId: null },
-      });
 
       if (!certificadoInfos) {
-        throw new NotFoundException('Certificado não encontrado');
+        throw new Error('Certificado não encontrado');
       }
 
-      // Simulação da chave privada vinda do banco
-      const privateKey1 = certificadoInfos.privateKey;
-      const CertificatePem = certificadoInfos.certificatePem;
-      const CertificateAcPem = certificadoAc.certificatePem;
+      const pfxFolderPath = dirname(certificadoInfos.pathCertificate);
 
-      // Caminhos dos arquivos
-      const pdfPath = path.join(process.cwd(), documento.storageManifest);
-      const signedPdfPath = path.join(
-        process.cwd(),
-        documento.storageManifest.replace('.pdf', '_signed.pdf'),
-      );
-      const privateKeyPath = path.join(
-        process.cwd(),
-        'uploads',
-        'certificados',
-        'private_key.pem',
-      );
-      const CertificateP12Path = path.join(
-        process.cwd(),
-        'uploads',
-        'certificados',
-        'certificado.p12',
-      );
-      const CertificateCrtPath = path.join(
-        process.cwd(),
-        'uploads',
-        'certificados',
-        'certificado.pem',
-      );
-      const CertificateAcCrtPath = path.join(
-        process.cwd(),
-        'uploads',
-        'certificados',
-        'certificadoAc.pem',
-      );
+      const pfxPath = join(process.cwd(), certificadoInfos.pathCertificate);
 
-      // Salva a chave privada temporariamente em um arquivo
-      fs.writeFileSync(privateKeyPath, privateKey1);
-      fs.writeFileSync(CertificateCrtPath, CertificatePem);
-      fs.writeFileSync(CertificateAcCrtPath, CertificateAcPem);
-
-      try {
-        // Executa o OpenSSL para assinar o documento
-        execSync(
-          `openssl pkcs12 -export -out ${CertificateP12Path} -inkey ${privateKeyPath} -in ${CertificateCrtPath} -certfile ${CertificateAcCrtPath} -passin pass:1234`,
+      if (!existsSync(pfxFolderPath)) {
+        mkdirSync(join(process.cwd(), pfxFolderPath));
+        const privateKeyPath = join(
+          process.cwd(),
+          pfxFolderPath,
+          'private_key.pem',
         );
 
-        console.log('✅ Certificado p12 criado:', CertificateP12Path);
-      } catch (error) {
-        console.error('❌ Erro ao criar certificado p12:', error);
-        throw new Error(`Erro ao criar certificado p12: ${error.message}`);
+        writeFileSync(privateKeyPath, certificadoInfos.privateKey, 'utf-8');
+        const certPath = join(
+          process.cwd(),
+          pfxFolderPath,
+          `${this.limparTexto(certificadoInfos.client.name)}.pem`,
+        );
+
+        writeFileSync(certPath, certificadoInfos.certificatePem, 'utf-8');
+        const caPath = join(
+          process.cwd(),
+          'uploads',
+          'certificados',
+          'ca',
+          'ca_cert.pem',
+        );
+        const password = '1234';
+
+        try {
+          execSync(
+            `openssl pkcs12 -export -out ${pfxPath} -inkey ${privateKeyPath} -in ${certPath} -certfile ${caPath} -passout pass:${password} `,
+            { stdio: 'inherit' },
+          );
+          console.log('Pasta criada com sucesso');
+        } catch (error) {
+          console.log('Erro ao criar pasta:', error);
+          throw new Error('Erro ao criar pasta');
+        }
       }
 
-      // Realiza a assinatura
+      //lib/JSignPdf.jar
+      const SENHA = '1234';
+      const OUTPUT_DIR = join(process.cwd(), 'uploads', 'manifest_ass');
+      const INPUT_PDF = join(process.cwd(), documento.storageManifest);
+      const ORIGINAL_PATH = join(process.cwd(), documento.storagePath);
+      const rotaOutputPdf = `uploads/manifest_ass`;
+      const FILENAME = `manifest_ass_${documento.originalName}`;
+      const OUTPUT_PDF = join(process.cwd(), rotaOutputPdf);
+
       try {
+        const shell = join(process.cwd(), 'lib');
+        const Java = 'JSignPdf.jar';
         execSync(
-          `node /home/ti001/Documentos/projetos/ass_module/signpdf.js ${CertificateP12Path} ${pdfPath} ${signedPdfPath}`,
+          `cd ${shell} && ./assinar_pdf.sh ${pfxPath} ${SENHA} ${INPUT_PDF} ${OUTPUT_DIR} ${documento.client.email || ''} ${OUTPUT_PDF} ${Java} ${FILENAME}`,
+          { stdio: 'inherit' },
         );
-        console.log('✅ PDF assinado e salvo como:', signedPdfPath);
+        console.log('✅ PDF assinado e salvo como:', OUTPUT_PDF);
       } catch (error) {
-        console.error('❌ Erro ao assinar o PDF:', error);
-        throw new Error(`Erro ao assinar o PDF: ${error.message}`);
+        console.log('Erro ao assinar PDF:', error);
+        throw new Error('Erro ao assinar PDF: ' + error);
       }
+
+      unlinkSync(INPUT_PDF);
+      unlinkSync(ORIGINAL_PATH);
 
       // Atualize o banco de dados
       await this.prisma.document.update({
         where: { id: documentId },
         data: {
           ValidSigned: true,
-          storageManifest: signedPdfPath,
-        },
-      });
-
-      await this.prisma.certificate.update({
-        where: { id: certificateId },
-        data: {
-          isDownloaded: true,
-          pathCertificate: certificadoInfos.pathCertificate,
+          storageManifest: rotaOutputPdf + FILENAME,
+          storagePath: '',
         },
       });
 
       return {
         documentId,
-        signedPdfPath,
+        OUTPUT_PDF,
       };
     } catch (error) {
       console.error('Erro ao criar assinatura:', error);
@@ -269,20 +269,17 @@ export class SignaturesService {
     }
   }
 
-  createSignaturePlaceholder(length: number): string {
-    return '0'.repeat(length);
+  limparTexto(texto: string): string {
+    return texto
+      .normalize('NFD') // Normaliza para decompor caracteres acentuados
+      .replace(/[\u0300-\u036f]/g, '') // Remove os acentos
+      .replace(/[^a-zA-Z0-9\s]/g, '') // Remove caracteres especiais
+      .replace(/\s+/g, '_') // Remove espaços em excesso
+      .toUpperCase(); // Converte para maiúsculas
   }
 
-  private findPlaceholderPosition(pdf: Buffer, placeholder: string): number {
-    const placeholderHex = Buffer.from(placeholder).toString('hex');
-    const pdfHex = pdf.toString('hex');
-    const position = pdfHex.indexOf(placeholderHex) / 2;
-
-    if (position === -1) {
-      throw new Error('Placeholder não encontrado no PDF');
-    }
-
-    return position;
+  createSignaturePlaceholder(length: number): string {
+    return '0'.repeat(length);
   }
 
   extractCertInfo(cert: forge.pki.Certificate) {

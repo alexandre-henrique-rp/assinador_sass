@@ -240,12 +240,13 @@ export class CertificatesService {
         await this.invalidateClientCertificates(client.id);
       }
 
-      const dirPath = path.join(process.cwd(), 'uploads', 'certificados');
+      const OriginalPath = 'uploads/certificados';
+      const clientDir = `${OriginalPath}/${this.limparTexto2(client.name)}${client.cpf}`;
       const caPath = path.join(process.cwd(), 'uploads', 'certificados', 'ca');
-      const clientDir = `${dirPath}/${this.limparTexto2(client.name)}${client.cpf}`;
 
       // Gerar chave privada para o cliente (sem senha)
       const clientKeyPath = `${clientDir}/private_key.pem`;
+
       const publicKeyPath = `${clientDir}/public_key.pem`;
       const csrPath = `${clientDir}/${this.limparTexto2(client.name)}.csr`;
       const certPath = `${clientDir}/${this.limparTexto2(client.name)}.pem`;
@@ -268,11 +269,19 @@ export class CertificatesService {
       }
 
       const clientPrivateKey = clientKeyPair.privateKey;
-      writeFileSync(clientKeyPath, clientKeyPair.privateKey, 'utf8');
+      writeFileSync(
+        path.join(process.cwd(), clientKeyPath),
+        clientKeyPair.privateKey,
+        'utf8',
+      );
       console.log(`Chave privada do cliente salva em '${clientKeyPath}'`);
 
       const clientPublicKey = clientKeyPair.publicKey;
-      writeFileSync(publicKeyPath, clientKeyPair.publicKey, 'utf8');
+      writeFileSync(
+        path.join(process.cwd(), publicKeyPath),
+        clientKeyPair.publicKey,
+        'utf8',
+      );
       console.log(`Chave pública do cliente salva em '${publicKeyPath}'`);
 
       const serialNumber = `0x521C${Date.now().toString(16)}`;
@@ -292,38 +301,42 @@ export class CertificatesService {
 
       try {
         execSync(
-          `openssl req -new -key ${clientKeyPath} -out ${csrPath} -subj "${subject}"`,
+          `openssl req -new -key ${path.join(process.cwd(), clientKeyPath)} -out ${path.join(process.cwd(), csrPath)} -subj "${subject}"`,
           { stdio: 'inherit' },
         );
-        console.log(`CSR gerado em '${csrPath}'`);
+        console.log(`CSR gerado em '${path.join(process.cwd(), csrPath)}'`);
       } catch (error) {
         console.log('Erro ao gerar o CSR: ' + error.message);
         throw new Error('Erro ao gerar o CSR: ' + error.message);
       }
 
-      const csr = readFileSync(csrPath, 'utf8');
+      const csr = readFileSync(path.join(process.cwd(), csrPath), 'utf8');
 
       // Assinar CSR com a CA
       try {
         execSync(
-          `openssl x509 -req -in ${csrPath} -CA ${caPath}/ca_cert.pem -CAkey ${caPath}/ca_private_key.pem -out ${certPath} -days ${Days} -sha256 -set_serial ${Serial}`,
+          `openssl x509 -req -in ${path.join(process.cwd(), csrPath)} -CA ${caPath}/ca_cert.pem -CAkey ${caPath}/ca_private_key.pem -out ${path.join(process.cwd(), certPath)} -days ${Days} -sha256 -set_serial ${Serial}`,
           { stdio: 'inherit' },
         );
-        console.log(`Certificado assinado gerado em '${certPath}'`);
+        console.log(
+          `Certificado assinado gerado em '${path.join(process.cwd(), certPath)}'`,
+        );
       } catch (error) {
         console.log('Erro ao assinar o CSR: ' + error.message);
         throw new Error('Erro ao assinar o CSR: ' + error.message);
       }
 
-      const cert = readFileSync(certPath, 'utf8');
+      const cert = readFileSync(path.join(process.cwd(), certPath), 'utf8');
 
       // Gerar o arquivo PFX (PKCS#12)
       try {
         execSync(
-          `openssl pkcs12 -export -out ${pfxPath} -inkey ${clientKeyPath} -in ${certPath} -certfile ${caPath}/ca_cert.pem -passout pass:${password} `,
+          `openssl pkcs12 -export -out ${path.join(process.cwd(), pfxPath)} -inkey ${path.join(process.cwd(), clientKeyPath)} -in ${path.join(process.cwd(), certPath)} -certfile ${caPath}/ca_cert.pem -passout pass:${password} `,
           { stdio: 'inherit' },
         );
-        console.log(`Arquivo PFX gerado em '${pfxPath}'`);
+        console.log(
+          `Arquivo PFX gerado em '${path.join(process.cwd(), pfxPath)}'`,
+        );
       } catch (error) {
         console.log('Erro ao gerar o PFX: ' + error.message);
         throw new Error('Erro ao gerar o PFX: ' + error.message);
@@ -347,7 +360,7 @@ export class CertificatesService {
           certificatePem: cert,
           clientId: client.id,
           isCA: false,
-          pathCertificate: `uploads/certificados${this.limparTexto2(client.name)}:${client.cpf}.pfx`,
+          pathCertificate: pfxPath,
           csr: csr,
           pfxPassword: password,
         },

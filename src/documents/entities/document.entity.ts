@@ -1,3 +1,4 @@
+import { IsOptional } from 'class-validator';
 import { ClientEntity } from '../../clients/entities/client.entity';
 import { Signature } from '../../signatures/entities/signature.entity';
 import { ApiResponseProperty } from '@nestjs/swagger';
@@ -25,6 +26,10 @@ export class DocumentEntity {
   storagePath: string;
 
   @ApiResponseProperty({ type: String })
+  @IsOptional()
+  storageManifest: string;
+
+  @ApiResponseProperty({ type: String })
   downloadUrl: string;
 
   @ApiResponseProperty({ type: String })
@@ -33,11 +38,20 @@ export class DocumentEntity {
   @ApiResponseProperty({ type: Boolean })
   isSigned: boolean;
 
+  @ApiResponseProperty({ type: Boolean })
+  ValidSigned: boolean;
+
   @ApiResponseProperty({ type: ClientEntity })
   client: ClientEntity;
 
   @ApiResponseProperty({ type: String })
   clientId: string;
+
+  @ApiResponseProperty({ type: String })
+  uploaderId: string;
+
+  @ApiResponseProperty({ type: String })
+  atualName: string;
 
   @ApiResponseProperty({ type: [Signature] })
   signatures: Signature[];

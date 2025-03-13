@@ -23,7 +23,13 @@ export class DocumentsService {
   }
 
   async findOne(id: string) {
-    const document = await this.prisma.document.findUnique({ where: { id } });
+    const document = await this.prisma.document.findUnique({
+      where: { id },
+      include: {
+        client: true,
+        signatures: true,
+      },
+    });
 
     if (!document) {
       throw new NotFoundException(`Documento com ID ${id} não encontrado`);
@@ -37,7 +43,7 @@ export class DocumentsService {
     return this.prisma.document.findMany({ where: { clientId: client.id } });
   }
 
-  async create(file: Express.Multer.File, cpf: string, operationId: string) {
+  async create(file: Express.Multer.File, cpf: string) {
     try {
       const client = await this.clientsService.findByCpf(
         this.smartSanitizeIdentifier(cpf),
@@ -75,7 +81,7 @@ export class DocumentsService {
           viewUrl: baseUrl2,
           clientId: client.id,
           atualName: uniqueFilename,
-          uploaderId: operationId,
+          uploaderId: 'f57f8061-4fa3-4045-a00c-bab637c4493a',
         },
       });
     } catch (error) {
@@ -257,6 +263,7 @@ export class DocumentsService {
 
       // Save the modified PDF
       const manifestFilename = `ass_${document.originalName}`;
+
       const manifestPath = path.join(
         process.cwd(),
         'uploads',
@@ -388,9 +395,9 @@ export class DocumentsService {
     // const buffer = fs.readFileSync(filePath);
     return buffer;
   }
-  async ViewFile(fileName: string) {
-    const req = await this.prisma.document.findFirst({
-      where: { originalName: fileName },
+  async ViewFile(id: string) {
+    const req = await this.prisma.document.findUnique({
+      where: { id },
     });
     if (!req) {
       throw new NotFoundException('Documento nao encontrado');

@@ -25,10 +25,6 @@ export class SignaturesController {
   @ApiResponse({ status: 201, description: 'Documento assinado com sucesso' })
   @ApiResponse({ status: 400, description: 'Erro ao assinar documento' })
   async signDocumentAdvanced(@Body() createSignatureDto: CreateSignatureDto) {
-    // const signature = await this.signaturesService.createAdvancedSignature(
-    //   createSignatureDto.documentId,
-    //   createSignatureDto,
-    // );
     await this.signaturesService.createAdvancedSignature(
       createSignatureDto.documentId,
       createSignatureDto,

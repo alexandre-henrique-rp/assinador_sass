@@ -11,12 +11,13 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { DocumentsService } from '../services/documents.service';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiTags } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { extname } from 'path';
 import * as fs from 'fs';
 import { Response } from 'express';
+import { DocumentFilterDto } from '../dto/document-filter.dto';
 
 @ApiTags('Ducumentação')
 @Controller('documents')
@@ -24,6 +25,31 @@ export class DocumentsController {
   constructor(private readonly documentsService: DocumentsService) {}
 
   @Post()
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'file',
+          format: 'binary',
+          description: 'Documento PDF a ser assinado',
+        },
+        cpf: {
+          type: 'string',
+          description: 'cpf de quem vai assinar',
+          format: 'Text',
+          example: '123.456.789-00',
+        },
+        admId: {
+          type: 'string',
+          description: 'id do responsável por gerenciar a assinatura',
+          format: 'Text',
+          example: 'a003e132-d6eb-45e6-bf23-c4b2d1a4b4e5',
+        },
+      },
+      required: ['file', 'cpf', 'admId'],
+    },
+  })
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
@@ -47,9 +73,12 @@ export class DocumentsController {
       }),
     }),
   )
-  UploadDocment(@UploadedFile() file: Express.Multer.File, @Body() data: any) {
-    const { cpf, id } = data;
-    return this.documentsService.create(file, cpf, id);
+  UploadDocment(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() data: DocumentFilterDto,
+  ) {
+    const { cpf } = data;
+    return this.documentsService.create(file, cpf);
   }
 
   @Get('download/:fileName')
@@ -58,9 +87,9 @@ export class DocumentsController {
     return res.download(OriginalPath);
   }
 
-  @Get('view/:fileName')
-  async view(@Param('fileName') fileName: string, @Res() res: Response) {
-    const OriginalPath = await this.documentsService.ViewFile(fileName);
+  @Get('view/:id')
+  async view(@Param('id') id: string, @Res() res: Response) {
+    const OriginalPath = await this.documentsService.ViewFile(id);
     return res.sendFile(OriginalPath);
   }
 
