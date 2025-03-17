@@ -72,8 +72,8 @@ export class ClientsController {
     status: 409,
     description: 'CPF, email ou username já existem',
   })
-  create(@Body() createClientDto: CreateClientDto) {
-    return this.clientsService.create(createClientDto);
+  async create(@Body() createClientDto: CreateClientDto) {
+    return await this.clientsService.create(createClientDto);
   }
 
   @Put(':id')

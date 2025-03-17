@@ -23,6 +23,10 @@ export class ClientsService {
   async findOne(id: string) {
     const client = await this.prisma.client.findUnique({
       where: { id },
+      include: {
+        certificates: true,
+        documents: true,
+      },
     });
 
     if (!client) {
@@ -74,7 +78,7 @@ export class ClientsService {
   ): Promise<ClientEntity | ErrorEntity> {
     try {
       const existingCpf = await this.prisma.client.findUnique({
-        where: { cpf: createClientDto.cpf },
+        where: { cpf: createClientDto.cpf.replace(/\D/g, '') },
       });
       if (existingCpf) {
         throw new ConflictException(
@@ -106,13 +110,14 @@ export class ClientsService {
           ...createClientDto,
           cpf: createClientDto.cpf.replace(/\D/g, ''),
           name: createClientDto.name.toUpperCase(),
-          password: await this.hashPassword(createClientDto.password),
-          birthDate: new Date(createClientDto.birthDate),
+          password: createClientDto.password,
+          birthDate: new Date(createClientDto.birthDate).toISOString(),
         },
       });
 
       return plainToClass(ClientEntity, client);
     } catch (error) {
+      console.log('🚀 ~ ClientsService ~ error:', error.message);
       const retorno: ErrorEntity = {
         message: error.message,
       };

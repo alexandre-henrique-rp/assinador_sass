@@ -43,7 +43,7 @@ export class DocumentsService {
     return this.prisma.document.findMany({ where: { clientId: client.id } });
   }
 
-  async create(file: Express.Multer.File, cpf: string) {
+  async create(file: Express.Multer.File, cpf: string, admId: string) {
     try {
       const client = await this.clientsService.findByCpf(
         this.smartSanitizeIdentifier(cpf),
@@ -81,7 +81,7 @@ export class DocumentsService {
           viewUrl: baseUrl2,
           clientId: client.id,
           atualName: uniqueFilename,
-          uploaderId: 'f57f8061-4fa3-4045-a00c-bab637c4493a',
+          uploaderId: admId,
         },
       });
     } catch (error) {

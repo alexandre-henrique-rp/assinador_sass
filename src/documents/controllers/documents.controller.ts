@@ -77,8 +77,8 @@ export class DocumentsController {
     @UploadedFile() file: Express.Multer.File,
     @Body() data: DocumentFilterDto,
   ) {
-    const { cpf } = data;
-    return this.documentsService.create(file, cpf);
+    const { cpf, admId } = data;
+    return this.documentsService.create(file, cpf, admId);
   }
 
   @Get('download/:fileName')
