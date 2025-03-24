@@ -21,6 +21,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { MinioS3Service } from 'src/minio-s3/minio-s3.service';
 
 @Injectable()
 export class SignaturesService {
@@ -28,6 +29,7 @@ export class SignaturesService {
     private prisma: PrismaService,
     private clientsService: ClientsService,
     private documentsService: DocumentsService,
+    private s3: MinioS3Service,
   ) {}
 
   async findAll() {
@@ -68,16 +70,17 @@ export class SignaturesService {
     }
 
     try {
-      const filePath = join(process.cwd(), document.storagePath);
-      const fileBuffer = readFileSync(filePath);
+      const filePath = await this.s3.downloadFile(
+        process.env.MINIO_BUCKET,
+        document.originalName,
+      );
+      const fileBuffer = await this.documentsService.BufferGenerate(filePath);
       const timestamp = new Date().toISOString();
 
       const signatureData = crypto
         .createHash('sha256')
         .update(Buffer.concat([fileBuffer, Buffer.from(timestamp)]))
         .digest('hex');
-
-      await this.documentsService.getDocumentWithManifest(documentId);
 
       const signature = await this.prisma.signature.create({
         data: {
@@ -88,6 +91,11 @@ export class SignaturesService {
           signatureData,
         },
       });
+
+      await this.createSignatureCertificate(
+        document.id,
+        createSignatureDto.certificateId,
+      );
 
       await this.prisma.document.update({
         where: { id: document.id },
@@ -101,61 +109,61 @@ export class SignaturesService {
     }
   }
 
-  async createQualifiedSignature(createSignatureDto: CreateSignatureDto) {
-    if (createSignatureDto.type !== SignatureType.ICP_BRASIL) {
-      throw new BadRequestException(
-        'Tipo de assinatura inválido para assinatura qualificada',
-      );
-    }
-    if (!createSignatureDto.certificateId) {
-      throw new BadRequestException(
-        'Certificado obrigatório para assinatura qualificada',
-      );
-    }
+  // async createQualifiedSignature(createSignatureDto: CreateSignatureDto) {
+  //   if (createSignatureDto.type !== SignatureType.ICP_BRASIL) {
+  //     throw new BadRequestException(
+  //       'Tipo de assinatura inválido para assinatura qualificada',
+  //     );
+  //   }
+  //   if (!createSignatureDto.certificateId) {
+  //     throw new BadRequestException(
+  //       'Certificado obrigatório para assinatura qualificada',
+  //     );
+  //   }
 
-    const client = await this.clientsService.findByCpf(
-      createSignatureDto.signerCpf,
-    );
-    const document = await this.documentsService.findOne(
-      createSignatureDto.documentId,
-    );
-    const certificate = await this.prisma.certificate.findUnique({
-      where: { id: createSignatureDto.certificateId },
-    });
-    if (!certificate || certificate.clientId !== client.id) {
-      throw new BadRequestException(
-        'O certificado não pertence ao usuário especificado',
-      );
-    }
+  //   const client = await this.clientsService.findByCpf(
+  //     createSignatureDto.signerCpf,
+  //   );
+  //   const document = await this.documentsService.findOne(
+  //     createSignatureDto.documentId,
+  //   );
+  //   const certificate = await this.prisma.certificate.findUnique({
+  //     where: { id: createSignatureDto.certificateId },
+  //   });
+  //   if (!certificate || certificate.clientId !== client.id) {
+  //     throw new BadRequestException(
+  //       'O certificado não pertence ao usuário especificado',
+  //     );
+  //   }
 
-    const filePath = join(process.cwd(), document.storagePath);
-    const fileBuffer = readFileSync(filePath);
-    const documentHash = crypto
-      .createHash('sha256')
-      .update(fileBuffer)
-      .digest();
-    const privateKey = forge.pki.privateKeyFromPem(certificate.privateKey);
-    const md = forge.md.sha256.create();
-    md.update(documentHash.toString('binary'));
-    const signatureHex = forge.util.bytesToHex(privateKey.sign(md));
+  //   const filePath = join(process.cwd(), document.storagePath);
+  //   const fileBuffer = readFileSync(filePath);
+  //   const documentHash = crypto
+  //     .createHash('sha256')
+  //     .update(fileBuffer)
+  //     .digest();
+  //   const privateKey = forge.pki.privateKeyFromPem(certificate.privateKey);
+  //   const md = forge.md.sha256.create();
+  //   md.update(documentHash.toString('binary'));
+  //   const signatureHex = forge.util.bytesToHex(privateKey.sign(md));
 
-    const signature = await this.prisma.signature.create({
-      data: {
-        signerId: client.id,
-        type: SignatureType.ICP_BRASIL,
-        documentId: document.id,
-        certificateId: certificate.id,
-        signatureData: signatureHex,
-      },
-    });
+  //   const signature = await this.prisma.signature.create({
+  //     data: {
+  //       signerId: client.id,
+  //       type: SignatureType.ICP_BRASIL,
+  //       documentId: document.id,
+  //       certificateId: certificate.id,
+  //       signatureData: signatureHex,
+  //     },
+  //   });
 
-    await this.prisma.document.update({
-      where: { id: document.id },
-      data: { isSigned: true },
-    });
+  //   await this.prisma.document.update({
+  //     where: { id: document.id },
+  //     data: { isSigned: true },
+  //   });
 
-    return signature;
-  }
+  //   return signature;
+  // }
 
   async createSignatureCertificate(documentId: string, certificateId: string) {
     try {
@@ -169,7 +177,7 @@ export class SignaturesService {
         throw new Error('Documento não encontrado');
       }
 
-      if (documento.ValidSigned) {
+      if (documento.isSigned) {
         throw new Error('Documento já assinado');
       }
 
@@ -223,7 +231,7 @@ export class SignaturesService {
           throw new Error('Erro ao criar pasta');
         }
       }
-
+//TODO arumar isso
       //lib/JSignPdf.jar
       const SENHA = '1234';
       const OUTPUT_DIR = join(process.cwd(), 'uploads', 'manifest_ass');

@@ -25,7 +25,6 @@ model Client {
   facialPhotoUrl     String?
   certificates       Certificate[]
   documents          Document[]    @relation("ClientDocuments")
-  uploadedDocuments  Document[]    @relation("UploadedDocuments") // Nome mais descritivo
   signatures         Signature[]
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
@@ -56,22 +55,17 @@ model Certificate {
 model Document {
   id              String      @id @default(uuid())
   originalName    String
+  atualName       String      @unique
   size            Int
   documentType    String
   extension       String
   hash            String
-  storagePath     String
-  storageManifest String?
   downloadUrl     String
   viewUrl         String
   isSigned        Boolean     @default(false)
-  ValidSigned     Boolean     @default(false)
-  client          Client      @relation("ClientDocuments", fields: [clientId], references: [id])
   clientId        String
+  client          Client      @relation("ClientDocuments", fields: [clientId], references: [id], onDelete: Cascade)
   signatures      Signature[]
-  uploader        Client?     @relation("UploadedDocuments", fields: [uploaderId], references: [id]) // Agora mais claro
-  uploaderId      String?
-  atualName       String      @unique
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 }

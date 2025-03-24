@@ -6,9 +6,10 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { SignaturesService } from '../services/signatures.service';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { CreateSignatureDto } from '../dto/create-signature.dto';
+// import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+// import { CreateSignatureDto } from '../dto/create-signature.dto';
 import { DocumentsService } from 'src/documents/services/documents.service';
+import { CreateSignatureDto } from '../dto/create-signature.dto';
 
 @ApiTags('assinaturas')
 @Controller('signatures')
@@ -29,7 +30,6 @@ export class SignaturesController {
       createSignatureDto.documentId,
       createSignatureDto,
     );
-    await this.documentsService.DownloadFile(createSignatureDto.documentId);
     await this.signaturesService.createSignatureCertificate(
       createSignatureDto.documentId,
       createSignatureDto.certificateId,
@@ -38,17 +38,17 @@ export class SignaturesController {
     return { message: 'Documento assinado com sucesso' };
   }
 
-  @Post('qualified')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Assinar documento com assinatura qualificada ICP-Brasil',
-  })
-  @ApiResponse({ status: 201, description: 'Documento assinado com sucesso' })
-  @ApiResponse({ status: 400, description: 'Erro ao assinar documento' })
-  async signDocumentQualified(@Body() createSignatureDto: CreateSignatureDto) {
-    return this.signaturesService.createQualifiedSignature(createSignatureDto);
-  }
+  // @Post('qualified')
+  // @UseGuards(JwtAuthGuard)
+  // @ApiBearerAuth()
+  // @ApiOperation({
+  //   summary: 'Assinar documento com assinatura qualificada ICP-Brasil',
+  // })
+  // @ApiResponse({ status: 201, description: 'Documento assinado com sucesso' })
+  // @ApiResponse({ status: 400, description: 'Erro ao assinar documento' })
+  // async signDocumentQualified(@Body() createSignatureDto: CreateSignatureDto) {
+  //   return this.signaturesService.createQualifiedSignature(createSignatureDto);
+  // }
 
   @Get('document/:documentId')
   // @UseGuards(JwtAuthGuard)

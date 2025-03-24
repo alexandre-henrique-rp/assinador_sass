@@ -45,109 +45,69 @@ export class DocumentsService {
     return this.prisma.document.findMany({ where: { clientId: client.id } });
   }
 
-  async create(file: Express.Multer.File, cpf: string, admId: string) {
+  async arquivar(bucket: string, file: Express.Multer.File, Dados: any) {
     try {
-      const client = await this.clientsService.findByCpf(
-        this.smartSanitizeIdentifier(cpf),
-      );
+      const CPF = Dados.cpf;
+      const client = await this.clientsService.findByCpf(CPF);
+      const destination = path.join(process.cwd(), file.path);
 
-      const fileBuffer = fs.readFileSync(file.path);
+      //ler o arquivo síncrono
+      const fileBuffer = fs.readFileSync(destination);
       const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
-
       const originalName = this.smartSanitizeIdentifier(file.originalname);
       const extension = path.extname(originalName).substring(1).toLowerCase();
-      const uniqueFilename = `${Date.now()}-${originalName}`;
-      const storagePath = path.join('uploads', 'documents', uniqueFilename);
-      const absolutePath = path.join(process.cwd(), storagePath);
+      const uniqueFilename = file.filename;
+      const baseUrl = process.env.API_URL || `http://localhost:3000`;
+      const ViewDoc = `${baseUrl}/documents/view/${originalName}`;
+      const DownloadDoc = `${baseUrl}/documents/download/${originalName}`;
 
-      const dir = path.dirname(absolutePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-
-      fs.copyFileSync(file.path, absolutePath);
-      fs.unlinkSync(file.path);
-
-      const baseUrl = `http://localhost:3000/documents/download/${originalName}`;
-      const baseUrl2 = `http://localhost:3000/documents/view/${originalName}`;
-
-      return this.prisma.document.create({
+      await this.prisma.document.create({
         data: {
           originalName: file.originalname,
           size: file.size,
           documentType: file.mimetype,
           extension,
           hash,
-          storagePath,
-          downloadUrl: baseUrl,
-          viewUrl: baseUrl2,
+          downloadUrl: DownloadDoc,
+          viewUrl: ViewDoc,
           clientId: client.id,
           atualName: uniqueFilename,
-          uploaderId: admId,
         },
       });
+
+      await this.s3.uploadFile(
+        bucket,
+        file.originalname,
+        fileBuffer,
+        file.mimetype,
+      );
+
+      this.destroyFile(file.path);
+      return { message: 'File uploaded successfully' };
     } catch (error) {
-      if (file.path && fs.existsSync(file.path)) {
-        fs.unlinkSync(file.path);
-      }
+      this.destroyFile(file.path);
       throw new BadRequestException(
         `Erro ao criar documento: ${error.message}`,
       );
     }
   }
 
-  async arquivar(bucket: string, file: Express.Multer.File, data: any) {
-    console.log(data);
-    const destination = path.join(process.cwd(), file.path);
-
-    //ler o arquivo síncrono
-    const fileBuffer = fs.readFileSync(destination);
-    const result = await this.s3.uploadFile(
-      bucket,
-      file.originalname,
-      fileBuffer,
-      file.mimetype,
-    );
-    console.log('🚀 ~ DocumentsService ~ result:', result);
-    return { message: 'File uploaded successfully' };
-  }
-
   async remove(fileName: string) {
     const document = await this.prisma.document.findFirst({
       where: { originalName: fileName },
     });
-
-    const filePath = path.join(process.cwd(), document.storagePath);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
+    const Bucket = process.env.MINIO_BUCKET;
+    await this.s3.deleteAllFiles(Bucket, fileName);
 
     await this.prisma.document.delete({ where: { id: document.id } });
   }
 
-  async getDocumentWithManifest(id: string) {
-    const document = await this.findOne(id);
-    const originalPath = path.join(process.cwd(), document.storagePath);
-
-    if (!fs.existsSync(originalPath)) {
-      throw new NotFoundException(
-        `Arquivo físico não encontrado para o documento ${id}`,
-      );
-    }
-
-    if (document.extension.toLowerCase() === 'pdf') {
-      return this.addManifestToPdf(document, originalPath);
-    } else {
-      throw new BadRequestException(
-        'Conversão para PDF de documentos não-PDF não implementada',
-      );
-    }
-  }
-
-  async addManifestToPdf(document: any, originalPath: fs.PathOrFileDescriptor) {
+  async addManifestToPdf(document: any) {
     try {
       // Load the original PDF asynchronously
-      const pdfBytes = await fs.promises.readFile(String(originalPath));
+      const Bucket = process.env.MINIO_BUCKET;
+      const pdfS3 = await this.s3.downloadFile(Bucket, document.originalName);
+      const pdfBytes = await this.BufferGenerate(pdfS3);
       const pdfDoc = await PDFDocument.load(pdfBytes);
 
       // Get fonts
@@ -279,16 +239,6 @@ export class DocumentsService {
         font: helveticaFont,
       });
 
-      // Save the modified PDF
-      const manifestFilename = `ass_${document.originalName}`;
-
-      const manifestPath = path.join(
-        process.cwd(),
-        'uploads',
-        'manifests',
-        manifestFilename,
-      );
-
       // Get all pages of the original document
       const pages = pdfDoc.getPages();
 
@@ -329,24 +279,15 @@ export class DocumentsService {
         });
       });
 
-      // Ensure directory exists
-      await fs.promises.mkdir(path.dirname(manifestPath), {
-        recursive: true,
-      });
-
-      await this.prisma.document.update({
-        where: { id: document.id },
-        data: { storageManifest: `uploads/manifests/${manifestFilename}` },
-      });
       // Write the modified PDF
       const pdfBytesModified = await pdfDoc.save();
-      await fs.promises.writeFile(manifestPath, pdfBytesModified);
-
-      return {
-        filePath: manifestPath,
-        filename: manifestFilename,
-        downloadUrl: `/uploads/manifests/${manifestFilename}`,
-      };
+      await this.s3.uploadFile(
+        process.env.MINIO_BUCKET,
+        document.atualName,
+        Buffer.from(pdfBytesModified),
+        'application/pdf',
+      );
+      return { message: 'Manifesto adicionado ao PDF com sucesso!' };
     } catch (error) {
       throw new BadRequestException(
         `Erro ao adicionar manifesto ao PDF: ${error.message}`,
@@ -356,16 +297,12 @@ export class DocumentsService {
 
   async verifyDocument(id: string) {
     const document = await this.findOne(id);
-    const filePath = path.join(process.cwd(), document.storagePath);
+    const filePath = await this.s3.downloadFile(
+      process.env.MINIO_BUCKET,
+      document.originalName,
+    );
 
-    if (!fs.existsSync(filePath)) {
-      return {
-        isValid: false,
-        details: { message: 'Arquivo físico não encontrado' },
-      };
-    }
-
-    const fileBuffer = fs.readFileSync(filePath);
+    const fileBuffer = await this.BufferGenerate(filePath);
     const currentHash = crypto
       .createHash('sha256')
       .update(fileBuffer)
@@ -396,49 +333,77 @@ export class DocumentsService {
   }
 
   async DownloadFile(docId: string) {
-    const req = await this.prisma.document.findFirst({
-      where: { id: docId },
-      include: {
-        client: true,
-        signatures: true,
-      },
-    });
-    // passo a passo do documento para ser baixado
-    //1 transformar o documento em buffer para manipulação
-    const filePath = path.join(process.cwd(), req.storagePath);
-    // adiciaonar o manifesto
-    const pdfManifest = await this.addManifestToPdf(req, filePath);
-    // incluir o manisfesto no pdf como ultima pagina
-    const buffer = fs.readFileSync(pdfManifest.filePath);
-    // const buffer = fs.readFileSync(filePath);
-    return buffer;
-  }
-  async ViewFile(id: string) {
-    const req = await this.prisma.document.findUnique({
-      where: { id },
-    });
-    if (!req) {
-      throw new NotFoundException('Documento nao encontrado');
+    try {
+      const req = await this.prisma.document.findUnique({
+        where: { id: docId },
+      });
+      const Bucket = process.env.MINIO_BUCKET;
+      const { originalName } = req;
+      const file = await this.s3.downloadFile(Bucket, originalName);
+      return file;
+    } catch (error) {
+      throw new BadRequestException(
+        'Error ao exibir o documento: ' + error.message,
+      );
     }
-    if (req.isSigned) {
-      const filePath = path.join(process.cwd(), req.storageManifest);
-      return filePath;
-    }
-    const filePath = path.join(process.cwd(), req.storagePath);
-    return filePath;
   }
 
-  async update(id: string, file: Express.Multer.File) {
-    const document = await this.findOne(id);
-    const filePath = path.join(process.cwd(), document.storagePath);
-    fs.unlinkSync(filePath);
-    const newFilePath = path.join(process.cwd(), file.path);
-    fs.renameSync(newFilePath, filePath);
-    return this.prisma.document.update({
-      where: { id },
-      data: { originalName: file.originalname },
-    });
+  async ViewFile(id: string) {
+    try {
+      const req = await this.prisma.document.findUnique({
+        where: { id },
+      });
+      const Bucket = process.env.MINIO_BUCKET;
+      const { originalName } = req;
+      const file = await this.s3.getFileUrl(Bucket, originalName);
+
+      return file;
+    } catch (error) {
+      throw new BadRequestException(
+        'Error ao exibir o documento: ' + error.message,
+      );
+    }
   }
+
+  // async update(id: string, file: Express.Multer.File) {
+  //   const document = await this.findOne(id);
+  //   const filePath = path.join(process.cwd(), document.storagePath);
+  //   fs.unlinkSync(filePath);
+  //   const newFilePath = path.join(process.cwd(), file.path);
+  //   fs.renameSync(newFilePath, filePath);
+  //   return this.prisma.document.update({
+  //     where: { id },
+  //     data: { originalName: file.originalname },
+  //   });
+  // }
+
+  //--------------------lib-------------------------
+
+  destroyFile(filePath: string) {
+    const destination = path.join(process.cwd(), filePath);
+    if (fs.existsSync(destination)) {
+      fs.unlinkSync(destination);
+    }
+  }
+
+  async BufferGenerate(stream: any): Promise<Buffer> {
+    const chunks = [];
+
+    for await (const chunk of stream) {
+      // Certifique-se de que o chunk é do tipo correto
+      if (chunk instanceof Buffer) {
+        chunks.push(chunk);
+      } else if (chunk instanceof Uint8Array) {
+        chunks.push(Buffer.from(chunk));
+      } else {
+        chunks.push(Buffer.from(chunk));
+      }
+    }
+
+    // Concatena todos os chunks em um único buffer
+    return Buffer.concat(chunks);
+  }
+
   smartSanitizeIdentifier(input: string): string {
     if (!input) return '';
 

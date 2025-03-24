@@ -41,6 +41,7 @@
     "PKCS",
     "pkeyutl",
     "poppler",
+    "presigner",
     "qpdf",
     "qrcode",
     "Razao",

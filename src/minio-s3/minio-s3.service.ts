@@ -3,52 +3,13 @@ import {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
+  DeleteObjectCommand,
+  ListObjectVersionsCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 @Injectable()
 export class MinioS3Service {
-  // private minioClient: Client;
-
-  // constructor() {
-  //   this.minioClient = new Client({
-  //     // endPoint: process.env.MINIO_ENDPOINT || 'localhost',
-  //     endPoint: 'apiminio.kingdevtec.com',
-  //     // port: Number(process.env.MINIO_PORT) || 9000,
-  //     port: 9001,
-  //     useSSL: true, // Defina como true se estiver usando HTTPS
-  //     accessKey: process.env.MINIO_ACCESS_KEY || 'minioadmin',
-  //     secretKey: process.env.MINIO_SECRET_KEY || 'minioadmin',
-  //   });
-  // }
-
-  // async uploadFile(
-  //   bucket: string,
-  //   fileName: string,
-  //   fileBuffer: Buffer,
-  //   fileBufferSize: number,
-  //   mimeType: string,
-  // ) {
-  //   return await this.minioClient.putObject(
-  //     bucket,
-  //     fileName,
-  //     fileBuffer,
-  //     fileBufferSize,
-  //     {
-  //       'Content-Type': mimeType,
-  //     },
-  //   );
-  // }
-
-  // async getFileUrl(bucket: string, fileName: string) {
-  //   return await this.minioClient.presignedUrl(
-  //     'GET',
-  //     bucket,
-  //     fileName,
-  //     24 * 60 * 60,
-  //   );
-  // }
-
   private s3Client: S3Client;
 
   constructor() {
@@ -86,5 +47,50 @@ export class MinioS3Service {
     });
 
     return await getSignedUrl(this.s3Client, command, { expiresIn: 3600 });
+  }
+
+  async deleteFile(bucketName: string, fileName: string) {
+    const command = new DeleteObjectCommand({
+      Bucket: bucketName,
+      Key: fileName,
+    });
+
+    return await this.s3Client.send(command);
+  }
+
+  async deleteAllFiles(bucketName: string, fileName: string) {
+    const listVersionFiles = new ListObjectVersionsCommand({
+      Bucket: bucketName,
+      Prefix: fileName,
+    });
+
+    const { Versions } = await this.s3Client.send(listVersionFiles);
+
+    if (!Versions || Versions.length === 0) {
+      console.log('Nenhuma versão encontrada para o arquivo:', fileName);
+      return;
+    }
+
+    const List = [];
+
+    for (const version of Versions) {
+      const deleteCommand = new DeleteObjectCommand({
+        Bucket: bucketName,
+        Key: fileName,
+        VersionId: version.VersionId,
+      });
+
+      const result = await this.s3Client.send(deleteCommand);
+      List.push(result);
+    }
+  }
+
+  async downloadFile(bucketName: string, fileName: string) {
+    const command = new GetObjectCommand({
+      Bucket: bucketName,
+      Key: fileName,
+    });
+
+    return await this.s3Client.send(command);
   }
 }
