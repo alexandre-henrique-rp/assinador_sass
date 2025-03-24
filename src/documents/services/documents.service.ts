@@ -10,12 +10,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ClientsService } from '../../clients/services/clients.service';
 import { degrees, PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import * as QRCode from 'qrcode';
+import { MinioS3Service } from '../../minio-s3/minio-s3.service';
 
 @Injectable()
 export class DocumentsService {
   constructor(
     private prisma: PrismaService,
     private clientsService: ClientsService,
+    private s3: MinioS3Service,
   ) {}
 
   async findAll() {
@@ -92,6 +94,22 @@ export class DocumentsService {
         `Erro ao criar documento: ${error.message}`,
       );
     }
+  }
+
+  async arquivar(bucket: string, file: Express.Multer.File, data: any) {
+    console.log(data);
+    const destination = path.join(process.cwd(), file.path);
+
+    //ler o arquivo síncrono
+    const fileBuffer = fs.readFileSync(destination);
+    const result = await this.s3.uploadFile(
+      bucket,
+      file.originalname,
+      fileBuffer,
+      file.mimetype,
+    );
+    console.log('🚀 ~ DocumentsService ~ result:', result);
+    return { message: 'File uploaded successfully' };
   }
 
   async remove(fileName: string) {

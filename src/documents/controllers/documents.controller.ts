@@ -24,40 +24,72 @@ import { DocumentFilterDto } from '../dto/document-filter.dto';
 export class DocumentsController {
   constructor(private readonly documentsService: DocumentsService) {}
 
-  @Post()
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        file: {
-          type: 'file',
-          format: 'binary',
-          description: 'Documento PDF a ser assinado',
-        },
-        cpf: {
-          type: 'string',
-          description: 'cpf de quem vai assinar',
-          format: 'Text',
-          example: '123.456.789-00',
-        },
-        admId: {
-          type: 'string',
-          description: 'id do responsável por gerenciar a assinatura',
-          format: 'Text',
-          example: 'a003e132-d6eb-45e6-bf23-c4b2d1a4b4e5',
-        },
-      },
-      required: ['file', 'cpf', 'admId'],
-    },
-  })
+  // @Post()
+  // @ApiBody({
+  //   schema: {
+  //     type: 'object',
+  //     properties: {
+  //       file: {
+  //         type: 'file',
+  //         format: 'binary',
+  //         description: 'Documento PDF a ser assinado',
+  //       },
+  //       cpf: {
+  //         type: 'string',
+  //         description: 'cpf de quem vai assinar',
+  //         format: 'Text',
+  //         example: '123.456.789-00',
+  //       },
+  //       admId: {
+  //         type: 'string',
+  //         description: 'id do responsável por gerenciar a assinatura',
+  //         format: 'Text',
+  //         example: 'a003e132-d6eb-45e6-bf23-c4b2d1a4b4e5',
+  //       },
+  //     },
+  //     required: ['file', 'cpf', 'admId'],
+  //   },
+  // })
+  // @UseInterceptors(
+  //   FileInterceptor('file', {
+  //     storage: diskStorage({
+  //       destination: './uploads/documents',
+
+  //       filename: (req, file, cb) => {
+  //         //verificar se o nome do arquivo ja existe
+  //         const nameFile = smartSanitizeIdentifier(file.originalname);
+  //         const extencion = extname(file.originalname);
+  //         //pegar o nome do arquivo sem a extensao
+  //         const fileName = nameFile.split(extencion)[0];
+  //         const fileExist = fs.existsSync(`./uploads/documents/${nameFile}`);
+  //         if (fileExist) {
+  //           //verificar quantos arquivos com o mesmo nome existem
+  //           const files = fs.readdirSync('./uploads/documents');
+  //           const total = files.length;
+  //           return cb(null, `${fileName}(${total})${extencion}`);
+  //         }
+  //         return cb(null, `${fileName}${extencion}`);
+  //       },
+  //     }),
+  //   }),
+  // )
+  // UploadDocment(
+  //   @UploadedFile() file: Express.Multer.File,
+  //   @Body() data: DocumentFilterDto,
+  // ) {
+  //   const { cpf, admId } = data;
+  //   return this.documentsService.create(file, cpf, admId);
+  // }
+
+  @Post('arquivo/s3')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
         destination: './uploads/documents',
-
         filename: (req, file, cb) => {
           //verificar se o nome do arquivo ja existe
-          const nameFile = smartSanitizeIdentifier(file.originalname);
+          // const nameFile = smartSanitizeIdentifier(file.originalname);
+          const nameFile = new Date().getTime().toString();
           const extencion = extname(file.originalname);
           //pegar o nome do arquivo sem a extensao
           const fileName = nameFile.split(extencion)[0];
@@ -73,12 +105,9 @@ export class DocumentsController {
       }),
     }),
   )
-  UploadDocment(
-    @UploadedFile() file: Express.Multer.File,
-    @Body() data: DocumentFilterDto,
-  ) {
-    const { cpf, admId } = data;
-    return this.documentsService.create(file, cpf, admId);
+  arquivar(@UploadedFile() file: Express.Multer.File, @Body() data: any) {
+    const bucket = process.env.MINIO_BUCKET || 'my-bucket';
+    return this.documentsService.arquivar(bucket, file, data);
   }
 
   @Get('download/:fileName')

@@ -21,10 +21,9 @@ export class PrismaService
 
   async onModuleInit() {
     // Verificar e criar a pasta db se não existir
-    await this.verificarECriarPastaDB();
-
-    await this.$connect();
-    await this.verificarECriarTabelas();
+    // await this.verificarECriarPastaDB();
+    // await this.$connect();
+    // await this.verificarECriarTabelas();
   }
 
   async onModuleDestroy() {

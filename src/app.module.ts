@@ -8,6 +8,7 @@ import { DocumentsModule } from './documents/documents.module';
 import { BiometricsModule } from './biometrics/biometrics.module';
 import { SignaturesModule } from './signatures/signatures.module';
 import { CertificatesModule } from './certificates/certificates.module';
+import { MinioS3Module } from './minio-s3/minio-s3.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { CertificatesModule } from './certificates/certificates.module';
     DocumentsModule,
     BiometricsModule,
     SignaturesModule,
+    MinioS3Module,
   ],
   controllers: [AppController],
   providers: [AppService],
