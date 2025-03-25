@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,23 +8,24 @@ datasource db {
 }
 
 model Client {
-  id                 String        @id @default(uuid())
-  name               String
-  cpf                String        @unique
-  birthDate          DateTime
-  email              String        @unique
-  username           String        @unique
-  password           String
-  hasCertificate     Boolean       @default(false)
-  isCertificateValid Boolean       @default(false)
-  isActive           Boolean       @default(true)
-  documentPhotoUrl   String?
-  facialPhotoUrl     String?
-  certificates       Certificate[]
-  documents          Document[]    @relation("ClientDocuments")
-  signatures         Signature[]
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  id                                   String        @id @default(uuid())
+  name                                 String
+  cpf                                  String        @unique
+  birthDate                            DateTime
+  email                                String        @unique
+  username                             String        @unique
+  password                             String
+  hasCertificate                       Boolean       @default(false)
+  isCertificateValid                   Boolean       @default(false)
+  isActive                             Boolean       @default(true)
+  documentPhotoUrl                     String?
+  facialPhotoUrl                       String?
+  createdAt                            DateTime      @default(now())
+  updatedAt                            DateTime      @updatedAt
+  certificates                         Certificate[]
+  Document_Document_uploaderIdToClient Document[]    @relation("Document_uploaderIdToClient")
+  documents                            Document[]    @relation("ClientDocuments")
+  signatures                           Signature[]
 }
 
 model Certificate {
@@ -41,8 +39,7 @@ model Certificate {
   isValid         Boolean  @default(true)
   issuer          String
   certificatePem  String
-  client          Client?  @relation(fields: [clientId], references: [id])
-  clientId        String? // Agora obrigatório
+  clientId        String?
   pathCertificate String?
   pfxPassword     String?
   csr             String
@@ -50,36 +47,42 @@ model Certificate {
   isDownloaded    Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  client          Client?  @relation(fields: [clientId], references: [id])
+
+  @@unique([subject, serialNumber])
 }
 
 model Document {
-  id              String      @id @default(uuid())
-  originalName    String
-  atualName       String      @unique
-  size            Int
-  documentType    String
-  extension       String
-  hash            String
-  downloadUrl     String
-  viewUrl         String
-  isSigned        Boolean     @default(false)
-  clientId        String
-  client          Client      @relation("ClientDocuments", fields: [clientId], references: [id], onDelete: Cascade)
-  signatures      Signature[]
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id                                 String      @id @default(uuid())
+  originalName                       String
+  size                               Int
+  documentType                       String
+  extension                          String
+  hash                               String
+  downloadUrl                        String
+  viewUrl                            String
+  isSigned                           Boolean     @default(false)
+  ValidSigned                        Boolean     @default(false)
+  clientId                           String
+  uploaderId                         String?
+  atualName                          String      @unique
+  createdAt                          DateTime    @default(now())
+  updatedAt                          DateTime    @updatedAt
+  Client_Document_uploaderIdToClient Client?     @relation("Document_uploaderIdToClient", fields: [uploaderId], references: [id])
+  client                             Client      @relation("ClientDocuments", fields: [clientId], references: [id], onDelete: Cascade)
+  signatures                         Signature[]
 }
 
 model Signature {
   id            String   @id @default(uuid())
-  signer        Client   @relation(fields: [signerId], references: [id])
   signerId      String
   signedAt      DateTime @default(now())
   type          String   @default("Avançada")
   certificateId String?
-  document      Document @relation(fields: [documentId], references: [id])
   documentId    String
   signatureData String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  document      Document @relation(fields: [documentId], references: [id])
+  signer        Client   @relation(fields: [signerId], references: [id])
 }

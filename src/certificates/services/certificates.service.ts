@@ -5,6 +5,7 @@ import {
   promises as fs,
   mkdirSync,
   readFileSync,
+  unlinkSync,
   writeFileSync,
 } from 'fs';
 import * as forge from 'node-forge';
@@ -16,6 +17,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCertificateDto } from '../dto/create-certificate.dto';
 import { CertificateEntity } from '../entities/certificate.entity';
 import { execSync } from 'child_process';
+import { MinioS3Service } from 'src/minio-s3/minio-s3.service';
 
 @Injectable()
 export class CertificatesService {
@@ -25,6 +27,7 @@ export class CertificatesService {
   constructor(
     private prisma: PrismaService,
     private clientsService: ClientsService,
+    private s3: MinioS3Service,
   ) {}
 
   AcName = 'AC Interface v5';
@@ -366,7 +369,19 @@ export class CertificatesService {
         },
       });
 
+      //criar o buffer do certificado pfx salvo no storage
+      const filepfx = readFileSync(path.join(process.cwd(), pfxPath));
+
       await this.clientsService.updateCertificateStatus(client.id, true, true);
+
+      const BucketCertificate = process.env.MINIO_BUCKET_CERTIFICATE;
+
+      await this.s3.uploadFile(
+        BucketCertificate,
+        `${this.limparTexto2(client.name)}-${client.cpf}.pfx`,
+        filepfx,
+        'application/pfx',
+      );
 
       return certificateEntity;
     } catch (error) {
@@ -388,30 +403,11 @@ export class CertificatesService {
   }
 
   // Método auxiliar para formatar as informações brasileiras no formato correto para OtherName
-  private formatBrazilianOtherName(value: string): string {
-    // Tag para PrintableString em DER (0x13)
-    const tag = 0x13;
-
-    // Para simplificação, assumimos que o tamanho da string é menor que 128
-    // Assim, a codificação do tamanho é feita em um único byte
-    const length = value.length;
-
-    // Cria um buffer para a tag, para o tamanho e para o conteúdo (em ASCII)
-    const tagBuffer = Buffer.from([tag]);
-    const lengthBuffer = Buffer.from([length]);
-    const contentBuffer = Buffer.from(value, 'ascii');
-
-    // Concatena os buffers
-    const derBuffer = Buffer.concat([tagBuffer, lengthBuffer, contentBuffer]);
-
-    // Converte o buffer para uma string hexadecimal formatada (dois dígitos por byte)
-    // e insere espaços entre cada byte para visualização
-    return (
-      derBuffer
-        .toString('hex')
-        .match(/.{1,2}/g)
-        ?.join(' ') || ''
-    );
+  async destroyFile(filePath: string) {
+    const destination = path.join(process.cwd(), filePath);
+    if (existsSync(destination)) {
+      unlinkSync(destination);
+    }
   }
 
   async invalidateCertificate(id: string): Promise<CertificateEntity> {

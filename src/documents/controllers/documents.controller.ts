@@ -73,12 +73,12 @@ export class DocumentsController {
       }),
     }),
   )
-  UploadDocment(
+  async UploadDocment(
     @UploadedFile() file: Express.Multer.File,
     @Body() data: DocumentFilterDto,
   ) {
     const bucket = process.env.MINIO_BUCKET || 'my-bucket';
-    return this.documentsService.arquivar(bucket, file, data);
+    return await this.documentsService.arquivar(bucket, file, data);
   }
 
   @Get('download/:id')

@@ -235,8 +235,8 @@ export class SignaturesService {
       //lib/JSignPdf.jar
       const SENHA = '1234';
       const OUTPUT_DIR = join(process.cwd(), 'uploads', 'manifest_ass');
-      const INPUT_PDF = join(process.cwd(), documento.storageManifest);
-      const ORIGINAL_PATH = join(process.cwd(), documento.storagePath);
+      const INPUT_PDF = join(process.cwd(), 'install');
+      const ORIGINAL_PATH = join(process.cwd(), 'documento.storagePath');
       const rotaOutputPdf = `uploads/manifest_ass`;
       const FILENAME = `manifest_ass_${documento.originalName}`;
       const OUTPUT_PDF = join(process.cwd(), rotaOutputPdf);
@@ -262,8 +262,8 @@ export class SignaturesService {
         where: { id: documentId },
         data: {
           ValidSigned: true,
-          storageManifest: rotaOutputPdf + FILENAME,
-          storagePath: '',
+          // storageManifest: rotaOutputPdf + FILENAME,
+          // storagePath: '',
         },
       });
 

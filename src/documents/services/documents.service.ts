@@ -57,34 +57,43 @@ export class DocumentsService {
       const originalName = this.smartSanitizeIdentifier(file.originalname);
       const extension = path.extname(originalName).substring(1).toLowerCase();
       const uniqueFilename = file.filename;
-      const baseUrl = process.env.API_URL || `http://localhost:3000`;
-      const ViewDoc = `${baseUrl}/documents/view/${originalName}`;
-      const DownloadDoc = `${baseUrl}/documents/download/${originalName}`;
 
-      await this.prisma.document.create({
+      const saveDocument = await this.prisma.document.create({
         data: {
           originalName: file.originalname,
           size: file.size,
           documentType: file.mimetype,
           extension,
           hash,
-          downloadUrl: DownloadDoc,
-          viewUrl: ViewDoc,
+          downloadUrl: '',
+          viewUrl: '',
           clientId: client.id,
           atualName: uniqueFilename,
         },
       });
 
+      const baseUrl = process.env.API_URL || `http://localhost:3000`;
+      const ViewDoc = `${baseUrl}/documents/view/${saveDocument.id}`;
+      const DownloadDoc = `${baseUrl}/documents/download/${saveDocument.id}`;
+      await await this.prisma.document.update({
+        where: { id: saveDocument.id },
+        data: {
+          downloadUrl: DownloadDoc,
+          viewUrl: ViewDoc,
+        },
+      });
+
       await this.s3.uploadFile(
         bucket,
-        file.originalname,
+        uniqueFilename,
         fileBuffer,
         file.mimetype,
       );
 
-      this.destroyFile(file.path);
+      await this.destroyFile(file.path);
       return { message: 'File uploaded successfully' };
     } catch (error) {
+      console.log('🚀 ~ DocumentsService ~ arquivar ~ error:', error);
       this.destroyFile(file.path);
       throw new BadRequestException(
         `Erro ao criar documento: ${error.message}`,
@@ -338,8 +347,8 @@ export class DocumentsService {
         where: { id: docId },
       });
       const Bucket = process.env.MINIO_BUCKET;
-      const { originalName } = req;
-      const file = await this.s3.downloadFile(Bucket, originalName);
+      const { atualName } = req;
+      const file = await this.s3.downloadFile(Bucket, atualName);
       return file;
     } catch (error) {
       throw new BadRequestException(
@@ -354,8 +363,8 @@ export class DocumentsService {
         where: { id },
       });
       const Bucket = process.env.MINIO_BUCKET;
-      const { originalName } = req;
-      const file = await this.s3.getFileUrl(Bucket, originalName);
+      const { atualName } = req;
+      const file = await this.s3.getFileUrl(Bucket, atualName);
 
       return file;
     } catch (error) {
@@ -379,7 +388,7 @@ export class DocumentsService {
 
   //--------------------lib-------------------------
 
-  destroyFile(filePath: string) {
+  async destroyFile(filePath: string) {
     const destination = path.join(process.cwd(), filePath);
     if (fs.existsSync(destination)) {
       fs.unlinkSync(destination);
